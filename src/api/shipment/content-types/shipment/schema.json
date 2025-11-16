@@ -1,0 +1,89 @@
+{
+  "kind": "collectionType",
+  "collectionName": "shipments",
+  "info": {
+    "singularName": "shipment",
+    "pluralName": "shipments",
+    "displayName": "Shipment",
+    "description": "Shipment tracking"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "shipmentNumber": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "batch": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::batch.batch",
+      "required": true
+    },
+    "trackingNumber": {
+      "type": "string"
+    },
+    "carrier": {
+      "type": "enumeration",
+      "enum": ["aras_kargo", "mng_kargo", "yurtici_kargo", "ptt_kargo", "ups_kargo", "other"],
+      "default": "aras_kargo"
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["preparing", "shipped", "in_transit", "delivered", "returned", "cancelled"],
+      "default": "preparing",
+      "required": true
+    },
+    "shipmentDate": {
+      "type": "datetime"
+    },
+    "estimatedDelivery": {
+      "type": "date"
+    },
+    "actualDelivery": {
+      "type": "datetime"
+    },
+    "recipientName": {
+      "type": "string",
+      "required": true
+    },
+    "recipientPhone": {
+      "type": "string"
+    },
+    "recipientEmail": {
+      "type": "email"
+    },
+    "shippingAddress": {
+      "type": "text",
+      "required": true
+    },
+    "city": {
+      "type": "string"
+    },
+    "postalCode": {
+      "type": "string"
+    },
+    "quantity": {
+      "type": "decimal",
+      "required": true
+    },
+    "shippingCost": {
+      "type": "decimal",
+      "default": 0
+    },
+    "shippedBy": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "notes": {
+      "type": "text"
+    },
+    "trackingHistory": {
+      "type": "json"
+    }
+  }
+}

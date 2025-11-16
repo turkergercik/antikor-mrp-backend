@@ -1,0 +1,27 @@
+{
+  "collectionName": "components_recipe_ingredients",
+  "info": {
+    "displayName": "Ingredient",
+    "description": "Recipe ingredient with raw material relation"
+  },
+  "options": {},
+  "attributes": {
+    "rawMaterial": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::raw-material.raw-material"
+    },
+    "quantity": {
+      "type": "decimal",
+      "required": true,
+      "default": 0,
+      "precision": 10,
+      "scale": 4
+    },
+    "unit": {
+      "type": "enumeration",
+      "enum": ["liter", "kg", "gram", "ml", "piece"],
+      "default": "liter"
+    }
+  }
+}

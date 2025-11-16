@@ -1,0 +1,60 @@
+{
+  "kind": "collectionType",
+  "collectionName": "raw_materials",
+  "info": {
+    "singularName": "raw-material",
+    "pluralName": "raw-materials",
+    "displayName": "Raw Material",
+    "description": "Raw materials inventory for manufacturing"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "description": {
+      "type": "text"
+    },
+    "sku": {
+      "type": "string",
+      "unique": true
+    },
+    "unit": {
+      "type": "enumeration",
+      "enum": ["liter", "kg", "gram", "ml", "piece"],
+      "default": "liter",
+      "required": true
+    },
+    "pricePerUnit": {
+      "type": "decimal",
+      "required": true,
+      "default": 0
+    },
+    "currentStock": {
+      "type": "decimal",
+      "default": 0
+    },
+    "minStockLevel": {
+      "type": "decimal",
+      "default": 0
+    },
+    "supplier": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": "text"
+    }
+  }
+}

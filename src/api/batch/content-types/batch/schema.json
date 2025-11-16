@@ -1,0 +1,102 @@
+{
+  "kind": "collectionType",
+  "collectionName": "batches",
+  "info": {
+    "singularName": "batch",
+    "pluralName": "batches",
+    "displayName": "Production Batch",
+    "description": "Manufacturing batch tracking"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "batchNumber": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "recipe": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::recipe.recipe"
+    },
+    "quantity": {
+      "type": "decimal",
+      "required": true
+    },
+    "unit": {
+      "type": "enumeration",
+      "enum": ["liter", "kg", "piece"],
+      "default": "liter"
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["planned", "in_progress", "completed", "quality_check", "approved", "rejected", "shipped"],
+      "default": "planned",
+      "required": true
+    },
+    "productionDate": {
+      "type": "datetime",
+      "required": true
+    },
+    "expiryDate": {
+      "type": "date"
+    },
+    "totalCost": {
+      "type": "decimal",
+      "default": 0
+    },
+    "profitMargin": {
+      "type": "decimal",
+      "default": 0
+    },
+    "orderCreatedBy": {
+      "type": "string"
+    },
+    "orderCreatedAt": {
+      "type": "string"
+    },
+    "productionStartedBy": {
+      "type": "string"
+    },
+    "productionStartedAt": {
+      "type": "datetime"
+    },
+    "productionCompletedBy": {
+      "type": "string"
+    },
+    "productionCompletedAt": {
+      "type": "datetime"
+    },
+    "qualityCheckedBy": {
+      "type": "string"
+    },
+    "qualityCheckedAt": {
+      "type": "datetime"
+    },
+    "qualityCheckResult": {
+      "type": "enumeration",
+      "enum": ["pending", "passed", "failed"],
+      "default": "pending"
+    },
+    "qualityCheckNotes": {
+      "type": "text"
+    },
+    "shippedBy": {
+      "type": "string"
+    },
+    "shippedAt": {
+      "type": "datetime"
+    },
+    "notes": {
+      "type": "text"
+    },
+    "ingredientsUsed": {
+      "type": "component",
+      "repeatable": true,
+      "component": "recipe.ingredient"
+    }
+  }
+}

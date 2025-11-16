@@ -1,0 +1,82 @@
+{
+  "kind": "collectionType",
+  "collectionName": "recipes",
+  "info": {
+    "singularName": "recipe",
+    "pluralName": "recipes",
+    "displayName": "Recipe",
+    "description": "Manufacturing recipes/formulations"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "code": {
+      "type": "string",
+      "unique": true
+    },
+    "description": {
+      "type": "text"
+    },
+    "version": {
+      "type": "string",
+      "default": "1.0"
+    },
+    "batchSize": {
+      "type": "decimal",
+      "required": true,
+      "default": 1
+    },
+    "batchUnit": {
+      "type": "enumeration",
+      "enum": ["liter", "kg", "piece"],
+      "default": "liter"
+    },
+    "ingredients": {
+      "type": "component",
+      "repeatable": true,
+      "component": "recipe.ingredient",
+      "required": true
+    },
+    "totalCost": {
+      "type": "decimal",
+      "default": 0
+    },
+    "costPerUnit": {
+      "type": "decimal",
+      "default": 0
+    },
+    "sellingPrice": {
+      "type": "decimal",
+      "default": 0
+    },
+    "profitMargin": {
+      "type": "decimal",
+      "default": 0
+    },
+    "instructions": {
+      "type": "richtext"
+    },
+    "preparationTime": {
+      "type": "integer"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": "text"
+    },
+    "createdBy": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    }
+  }
+}

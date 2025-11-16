@@ -1,0 +1,63 @@
+{
+  "kind": "collectionType",
+  "collectionName": "quality_controls",
+  "info": {
+    "singularName": "quality-control",
+    "pluralName": "quality-controls",
+    "displayName": "Quality Control",
+    "description": "Quality control records"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "batch": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::batch.batch",
+      "required": true
+    },
+    "controlDate": {
+      "type": "datetime",
+      "required": true
+    },
+    "controlledBy": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "required": true
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["passed", "failed", "pending"],
+      "default": "pending",
+      "required": true
+    },
+    "phLevel": {
+      "type": "decimal"
+    },
+    "sterility": {
+      "type": "boolean",
+      "default": true
+    },
+    "contamination": {
+      "type": "boolean",
+      "default": false
+    },
+    "appearance": {
+      "type": "text"
+    },
+    "testResults": {
+      "type": "json"
+    },
+    "notes": {
+      "type": "text"
+    },
+    "attachments": {
+      "type": "media",
+      "multiple": true,
+      "allowedTypes": ["images", "files"]
+    }
+  }
+}
