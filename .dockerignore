@@ -1,0 +1,51 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build output
+.strapi/
+dist/
+build/
+
+# Database
+*.db
+*.sqlite
+
+# Uploads (should be on volume or external storage in production)
+public/uploads/*
+!public/uploads/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+
+# Testing
+.github
+.gitlab
+
+# Misc
+.cache
+.temp
+tmp/
