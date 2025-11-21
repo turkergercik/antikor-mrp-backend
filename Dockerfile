@@ -16,6 +16,9 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Set NODE_ENV for optimized production build
+ENV NODE_ENV=production
+
 # Build Strapi admin panel
 RUN npm run build
 
@@ -24,6 +27,9 @@ FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs
@@ -38,5 +44,8 @@ EXPOSE 1337
 
 ENV PORT=1337
 ENV HOST=0.0.0.0
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
 
 CMD ["npm", "start"]
