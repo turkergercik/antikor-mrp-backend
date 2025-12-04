@@ -22,6 +22,44 @@ module.exports = {
     const { data } = event.params;
     
     console.log('=== Batch beforeUpdate lifecycle triggered ===');
+    console.log('Update data:', JSON.stringify(data, null, 2));
+    
+    // Define all valid enum values
+    const enumValidations = {
+      batchStatus: {
+        valid: ['planned', 'in_progress', 'completed', 'quality_check', 'approved', 'rejected', 'shipped'],
+        default: 'planned'
+      },
+      shipmentStatus: {
+        valid: ['yolda', 'dagitimda', 'teslim_edildi', 'bulunamadi'],
+        default: null // optional - will be deleted if invalid
+      },
+      unit: {
+        valid: ['liter', 'kg', 'piece'],
+        default: 'liter'
+      },
+      qualityCheckResult: {
+        valid: ['pending', 'passed', 'failed'],
+        default: 'pending'
+      }
+    };
+    
+    // Validate and fix all enum fields
+    for (const [field, config] of Object.entries(enumValidations)) {
+      if (data[field] !== undefined) {
+        console.log(`Checking ${field}:`, data[field], 'type:', typeof data[field]);
+        
+        if (data[field] === null || data[field] === '' || !config.valid.includes(data[field])) {
+          if (config.default === null) {
+            console.log(`Removing invalid ${field}: "${data[field]}"`);
+            delete data[field];
+          } else {
+            console.log(`Fixing invalid ${field}: "${data[field]}" to "${config.default}"`);
+            data[field] = config.default;
+          }
+        }
+      }
+    }
     
     // Calculate batch cost before update if recipe or quantity changed
     if (data.recipe !== undefined || data.quantity !== undefined) {

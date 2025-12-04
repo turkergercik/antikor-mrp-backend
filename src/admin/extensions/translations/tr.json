@@ -1,0 +1,15 @@
+{
+  "content-manager.content-types.api::batch.batch.batchNumber": "Parti Numarası",
+  "content-manager.content-types.api::batch.batch.recipe": "Tarif",
+  "content-manager.content-types.api::batch.batch.quantity": "Miktar",
+  "content-manager.content-types.api::batch.batch.unit": "Birim",
+  "content-manager.content-types.api::batch.batch.status": "Durum",
+  "content-manager.content-types.api::batch.batch.productionDate": "Üretim Tarihi",
+  "content-manager.content-types.api::batch.batch.expiryDate": "Son Kullanma Tarihi",
+  "content-manager.content-types.api::batch.batch.totalCost": "Toplam Maliyet",
+  "content-manager.content-types.api::batch.batch.profitMargin": "Kar Marjı",
+  "content-manager.content-types.api::batch.batch.cargoCompany": "Kargo Şirketi",
+  "content-manager.content-types.api::batch.batch.trackingNumber": "Takip Numarası",
+  "content-manager.content-types.api::batch.batch.shipmentStatus": "Kargo Durumu",
+  "content-manager.content-types.api::batch.batch.notes": "Notlar"
+}

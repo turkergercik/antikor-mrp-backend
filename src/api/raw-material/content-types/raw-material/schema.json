@@ -26,7 +26,7 @@
     },
     "unit": {
       "type": "enumeration",
-      "enum": ["liter", "kg", "gram", "ml", "piece"],
+      "enum": ["liter", "gram", "piece"],
       "default": "liter",
       "required": true
     },
@@ -35,9 +35,16 @@
       "required": true,
       "default": 0
     },
+    "currency": {
+      "type": "enumeration",
+      "enum": ["TRY", "USD", "EUR", "GBP"],
+      "default": "TRY",
+      "required": true
+    },
     "currentStock": {
       "type": "decimal",
-      "default": 0
+      "default": 0,
+      "required": true
     },
     "minStockLevel": {
       "type": "decimal",
@@ -52,6 +59,14 @@
     "isActive": {
       "type": "boolean",
       "default": true
+    },
+    "packagingCapacity": {
+      "type": "integer",
+      "default": 0
+    },
+    "costPerUnit": {
+      "type": "decimal",
+      "default": 0
     },
     "notes": {
       "type": "text"

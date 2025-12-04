@@ -3,9 +3,72 @@
  */
 
 const { createCoreController } = require('@strapi/strapi').factories;
+const axios = require('axios');
+const { parseString } = require('xml2js');
+const { promisify } = require('util');
+
+const parseXML = promisify(parseString);
+
+// Helper function to fetch exchange rates
+async function fetchExchangeRates() {
+  try {
+    const response = await axios.get('https://www.tcmb.gov.tr/kurlar/today.xml', {
+      timeout: 5000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0'
+      }
+    });
+
+    const result = await parseXML(response.data);
+    
+    const rates = {
+      TRY: 1,
+      USD: null,
+      EUR: null,
+      GBP: null
+    };
+
+    if (result && result.Tarih_Date && result.Tarih_Date.Currency) {
+      result.Tarih_Date.Currency.forEach(currency => {
+        const code = currency.$.CurrencyCode;
+        const forexSelling = currency.ForexSelling?.[0];
+        
+        if (code && forexSelling) {
+          const rate = parseFloat(forexSelling);
+          if (!isNaN(rate)) {
+            rates[code] = rate;
+          }
+        }
+      });
+    }
+
+    return rates;
+  } catch (error) {
+    strapi.log.error('Error fetching exchange rates in recipe controller:', error);
+    return null;
+  }
+}
+
+// Helper function to convert price to USD
+function convertToUSD(price, currency, exchangeRates) {
+  if (!exchangeRates) return 0;
+  
+  if (currency === 'USD') {
+    return price;
+  } else if (currency === 'TRY') {
+    return price / exchangeRates.USD;
+  } else if (currency === 'EUR') {
+    return (price * exchangeRates.EUR) / exchangeRates.USD;
+  } else if (currency === 'GBP') {
+    return (price * exchangeRates.GBP) / exchangeRates.USD;
+  }
+  
+  // Default to TRY if currency not specified
+  return price / exchangeRates.USD;
+}
 
 module.exports = createCoreController('api::recipe.recipe', ({ strapi }) => ({
-  // Calculate recipe cost based on ingredients
+  // Calculate recipe cost based on ingredients (in USD)
   async calculateCost(ctx) {
     try {
       const { id } = ctx.params;
@@ -21,11 +84,19 @@ module.exports = createCoreController('api::recipe.recipe', ({ strapi }) => ({
         return ctx.notFound('Recipe not found');
       }
 
+      // Fetch exchange rates
+      const exchangeRates = await fetchExchangeRates();
+      
+      if (!exchangeRates || !exchangeRates.USD) {
+        strapi.log.error('Failed to fetch exchange rates');
+        return ctx.badRequest('Unable to fetch exchange rates');
+      }
+
       let totalCost = 0;
       const ingredients = recipe.ingredients || [];
       const ingredientDetails = [];
 
-      // Calculate cost for each ingredient
+      // Calculate cost for each ingredient in USD
       for (const ingredient of ingredients) {
         // Support both component (rawMaterial relation) and JSON (rawMaterialId) formats
         let rawMaterial = null;
@@ -54,7 +125,10 @@ module.exports = createCoreController('api::recipe.recipe', ({ strapi }) => ({
         }
 
         if (rawMaterial && rawMaterial.pricePerUnit && ingredient.quantity) {
-          const ingredientCost = ingredient.quantity * rawMaterial.pricePerUnit;
+          // Convert price to USD based on material currency
+          const materialCurrency = rawMaterial.currency || 'TRY';
+          const priceInUSD = convertToUSD(rawMaterial.pricePerUnit, materialCurrency, exchangeRates);
+          const ingredientCost = ingredient.quantity * priceInUSD;
           totalCost += ingredientCost;
           
           ingredientDetails.push({
@@ -62,18 +136,20 @@ module.exports = createCoreController('api::recipe.recipe', ({ strapi }) => ({
             quantity: ingredient.quantity,
             unit: ingredient.unit,
             pricePerUnit: rawMaterial.pricePerUnit,
+            currency: materialCurrency,
+            priceInUSD: priceInUSD.toFixed(4),
             cost: ingredientCost.toFixed(2),
           });
         }
       }
 
-      // Calculate cost per unit
+      // Calculate cost per unit (in USD)
       const costPerUnit = totalCost / recipe.batchSize;
       const profitMargin = recipe.sellingPrice > 0 
         ? parseFloat(((recipe.sellingPrice - costPerUnit) / recipe.sellingPrice * 100).toFixed(2))
         : 0;
 
-      // Update recipe - ONLY update cost-related fields, don't touch ingredients
+      // Update recipe - ONLY update cost-related fields, don't touch ingredients (all in USD)
       const updatedRecipe = await strapi.db.query('api::recipe.recipe').update({
         where: { id: id },
         data: {
@@ -89,6 +165,7 @@ module.exports = createCoreController('api::recipe.recipe', ({ strapi }) => ({
           totalCost: totalCost.toFixed(2),
           costPerUnit: costPerUnit.toFixed(2),
           profitMargin,
+          exchangeRates,
           ingredients: ingredientDetails,
         },
       };

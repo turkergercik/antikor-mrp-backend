@@ -1,0 +1,44 @@
+{
+  "kind": "collectionType",
+  "collectionName": "packagings",
+  "info": {
+    "singularName": "packaging",
+    "pluralName": "packagings",
+    "displayName": "Packaging",
+    "description": "Packaging types and costs"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "type": {
+      "type": "enumeration",
+      "enum": ["small", "large"],
+      "required": true,
+      "default": "small"
+    },
+    "capacity": {
+      "type": "integer",
+      "required": true,
+      "default": 100
+    },
+    "costPerUnit": {
+      "type": "decimal",
+      "required": true,
+      "default": 0
+    },
+    "currency": {
+      "type": "enumeration",
+      "enum": ["TRY", "USD", "EUR"],
+      "default": "TRY"
+    },
+    "description": {
+      "type": "text"
+    }
+  }
+}

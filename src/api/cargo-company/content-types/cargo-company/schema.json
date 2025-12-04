@@ -1,0 +1,29 @@
+{
+  "kind": "collectionType",
+  "collectionName": "cargo_companies",
+  "info": {
+    "singularName": "cargo-company",
+    "pluralName": "cargo-companies",
+    "displayName": "Cargo Company",
+    "description": "Shipment cargo companies"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "trackingUrl": {
+      "type": "string",
+      "required": false
+    },
+    "companySlug": {
+      "type": "string",
+      "required": true
+    }
+  }
+}

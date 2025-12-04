@@ -442,9 +442,29 @@ export interface ApiBatchBatch extends Struct.CollectionTypeSchema {
     draftAndPublish: false;
   };
   attributes: {
+    actualQuantity: Schema.Attribute.Decimal &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<0>;
     batchNumber: Schema.Attribute.String &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
+    batchStatus: Schema.Attribute.Enumeration<
+      [
+        'planned',
+        'in_progress',
+        'completed',
+        'quality_check',
+        'approved',
+        'rejected',
+        'shipped',
+      ]
+    > &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'planned'>;
+    cargoCompany: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::cargo-company.cargo-company'
+    >;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -456,6 +476,8 @@ export interface ApiBatchBatch extends Struct.CollectionTypeSchema {
     notes: Schema.Attribute.Text;
     orderCreatedAt: Schema.Attribute.String;
     orderCreatedBy: Schema.Attribute.String;
+    packaging: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    packagingCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     productionCompletedAt: Schema.Attribute.DateTime;
     productionCompletedBy: Schema.Attribute.String;
     productionDate: Schema.Attribute.DateTime & Schema.Attribute.Required;
@@ -472,24 +494,94 @@ export interface ApiBatchBatch extends Struct.CollectionTypeSchema {
       Schema.Attribute.DefaultTo<'pending'>;
     quantity: Schema.Attribute.Decimal & Schema.Attribute.Required;
     recipe: Schema.Attribute.Relation<'manyToOne', 'api::recipe.recipe'>;
+    shipmentStatus: Schema.Attribute.Enumeration<
+      ['yolda', 'dagitimda', 'teslim_edildi', 'bulunamadi']
+    > &
+      Schema.Attribute.DefaultTo<'yolda'>;
     shippedAt: Schema.Attribute.DateTime;
     shippedBy: Schema.Attribute.String;
-    status: Schema.Attribute.Enumeration<
-      [
-        'planned',
-        'in_progress',
-        'completed',
-        'quality_check',
-        'approved',
-        'rejected',
-        'shipped',
-      ]
-    > &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<'planned'>;
     totalCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    trackingNumber: Schema.Attribute.String;
     unit: Schema.Attribute.Enumeration<['liter', 'kg', 'piece']> &
       Schema.Attribute.DefaultTo<'liter'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    wastage: Schema.Attribute.Decimal &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<0>;
+  };
+}
+
+export interface ApiCargoCompanyCargoCompany
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'cargo_companies';
+  info: {
+    description: 'Shipment cargo companies';
+    displayName: 'Cargo Company';
+    pluralName: 'cargo-companies';
+    singularName: 'cargo-company';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    companySlug: Schema.Attribute.String & Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::cargo-company.cargo-company'
+    > &
+      Schema.Attribute.Private;
+    name: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    publishedAt: Schema.Attribute.DateTime;
+    trackingUrl: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiPackagingPackaging extends Struct.CollectionTypeSchema {
+  collectionName: 'packagings';
+  info: {
+    description: 'Packaging types and costs';
+    displayName: 'Packaging';
+    pluralName: 'packagings';
+    singularName: 'packaging';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    capacity: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<100>;
+    costPerUnit: Schema.Attribute.Decimal &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<0>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    currency: Schema.Attribute.Enumeration<['TRY', 'USD', 'EUR']> &
+      Schema.Attribute.DefaultTo<'TRY'>;
+    description: Schema.Attribute.Text;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::packaging.packaging'
+    > &
+      Schema.Attribute.Private;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    type: Schema.Attribute.Enumeration<['small', 'large']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'small'>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -556,10 +648,16 @@ export interface ApiRawMaterialRawMaterial extends Struct.CollectionTypeSchema {
   };
   attributes: {
     category: Schema.Attribute.String;
+    costPerUnit: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    currentStock: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    currency: Schema.Attribute.Enumeration<['TRY', 'USD', 'EUR', 'GBP']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'TRY'>;
+    currentStock: Schema.Attribute.Decimal &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<0>;
     description: Schema.Attribute.Text;
     isActive: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
@@ -573,13 +671,14 @@ export interface ApiRawMaterialRawMaterial extends Struct.CollectionTypeSchema {
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
     notes: Schema.Attribute.Text;
+    packagingCapacity: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
     pricePerUnit: Schema.Attribute.Decimal &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<0>;
     publishedAt: Schema.Attribute.DateTime;
     sku: Schema.Attribute.String & Schema.Attribute.Unique;
     supplier: Schema.Attribute.String;
-    unit: Schema.Attribute.Enumeration<['liter', 'kg', 'gram', 'ml', 'piece']> &
+    unit: Schema.Attribute.Enumeration<['liter', 'gram', 'piece']> &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'liter'>;
     updatedAt: Schema.Attribute.DateTime;
@@ -1222,6 +1321,8 @@ declare module '@strapi/strapi' {
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
       'api::batch.batch': ApiBatchBatch;
+      'api::cargo-company.cargo-company': ApiCargoCompanyCargoCompany;
+      'api::packaging.packaging': ApiPackagingPackaging;
       'api::quality-control.quality-control': ApiQualityControlQualityControl;
       'api::raw-material.raw-material': ApiRawMaterialRawMaterial;
       'api::recipe.recipe': ApiRecipeRecipe;

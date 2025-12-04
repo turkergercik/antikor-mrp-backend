@@ -31,7 +31,7 @@
       "enum": ["liter", "kg", "piece"],
       "default": "liter"
     },
-    "status": {
+    "batchStatus": {
       "type": "enumeration",
       "enum": ["planned", "in_progress", "completed", "quality_check", "approved", "rejected", "shipped"],
       "default": "planned",
@@ -84,14 +84,45 @@
     "qualityCheckNotes": {
       "type": "text"
     },
+    "actualQuantity": {
+      "type": "decimal",
+      "default": 0,
+      "required": true
+    },
+    "wastage": {
+      "type": "decimal",
+      "default": 0,
+      "required": true
+    },
     "shippedBy": {
       "type": "string"
     },
     "shippedAt": {
       "type": "datetime"
     },
+    "trackingNumber": {
+      "type": "string"
+    },
+    "cargoCompany": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::cargo-company.cargo-company"
+    },
+    "shipmentStatus": {
+      "type": "enumeration",
+      "enum": ["yolda", "dagitimda", "teslim_edildi", "bulunamadi"],
+      "default": "yolda"
+    },
     "notes": {
       "type": "text"
+    },
+    "packaging": {
+      "type": "boolean",
+      "default": false
+    },
+    "packagingCost": {
+      "type": "decimal",
+      "default": 0
     },
     "ingredientsUsed": {
       "type": "component",
