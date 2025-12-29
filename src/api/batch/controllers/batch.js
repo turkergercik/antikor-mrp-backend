@@ -143,28 +143,132 @@ module.exports = createCoreController('api::batch.batch', ({ strapi }) => ({
             
             // Get current stock
             const material = await strapi.entityService.findOne('api::raw-material.raw-material', rawMaterialId, {
-              fields: ['id', 'name', 'currentStock', 'unit']
+              fields: ['id', 'name', 'currentStock', 'unit', 'sku', 'pricePerUnit']
             });
             
             if (!material) {
               return ctx.badRequest(`Malzeme bulunamadı: ${ingredient.rawMaterial.name}`);
             }
             
-            strapi.log.info(`${material.name}: Required: ${requiredAmount}, Stock: ${material.currentStock}`);
+            const sku = material.sku || material.name;
             
-            // Check if enough stock
-            if (material.currentStock < requiredAmount) {
-              return ctx.badRequest(`Yetersiz ${material.name} stoku. Gerekli: ${requiredAmount}, Mevcut: ${material.currentStock}`);
+            // Calculate current stock from stock-history
+            let currentStock = 0;
+            try {
+              const stockHistory = await strapi.entityService.findMany('api::stock-history.stock-history', {
+                filters: { sku: sku }
+              });
+
+              currentStock = stockHistory.reduce((total, record) => {
+                if (record.transactionType === 'purchase' || record.transactionType === 'return') {
+                  return total + parseFloat(record.quantity || 0);
+                } else {
+                  return total - parseFloat(record.quantity || 0);
+                }
+              }, 0);
+            } catch (error) {
+              strapi.log.error('Error fetching stock history:', error);
+              // Fallback to old currentStock if stock-history doesn't exist
+              currentStock = material.currentStock || 0;
             }
             
-            // Deduct from stock
-            await strapi.entityService.update('api::raw-material.raw-material', rawMaterialId, {
+            strapi.log.info(`${material.name}: Required: ${requiredAmount}, Stock: ${currentStock}`);
+            
+            // Check if enough stock
+            if (currentStock < requiredAmount) {
+              return ctx.badRequest(`Yetersiz ${material.name} stoku. Gerekli: ${requiredAmount}, Mevcut: ${currentStock}`);
+            }
+            
+            // Get the selected lot for this material from batch data
+            let selectedLot = currentBatch.rawMaterialLots?.[sku];
+            
+            // If no lot was selected (old batches or automatic mode), auto-select using FIFO
+            if (!selectedLot) {
+              try {
+                const stockHistory = await strapi.entityService.findMany('api::stock-history.stock-history', {
+                  filters: { sku: sku }
+                });
+
+                // Group by lot number
+                const lotMap = {};
+                stockHistory.forEach(record => {
+                  if (!lotMap[record.lotNumber]) {
+                    lotMap[record.lotNumber] = {
+                      lotNumber: record.lotNumber,
+                      totalStock: 0,
+                      purchaseDate: record.purchaseDate
+                    };
+                  }
+                  
+                  if (record.transactionType === 'purchase' || record.transactionType === 'return') {
+                    lotMap[record.lotNumber].totalStock += parseFloat(record.quantity || 0);
+                  } else {
+                    lotMap[record.lotNumber].totalStock -= parseFloat(record.quantity || 0);
+                  }
+                });
+
+                // Get available lots and sort by FIFO (oldest first)
+                const availableLots = Object.values(lotMap)
+                  .filter(lot => lot.totalStock > 0)
+                  .sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
+
+                if (availableLots.length > 0) {
+                  selectedLot = availableLots[0].lotNumber;
+                  strapi.log.info(`Auto-selected lot ${selectedLot} for ${material.name} using FIFO`);
+                } else {
+                  return ctx.badRequest(`${material.name} için kullanılabilir lot bulunamadı`);
+                }
+              } catch (error) {
+                strapi.log.error('Error auto-selecting lot:', error);
+                return ctx.badRequest(`${material.name} için lot seçimi yapılamadı`);
+              }
+            }
+            
+            // Verify the selected lot has enough stock
+            let lotStock = 0;
+            try {
+              const lotHistory = await strapi.entityService.findMany('api::stock-history.stock-history', {
+                filters: { 
+                  sku: sku,
+                  lotNumber: selectedLot
+                }
+              });
+
+              lotStock = lotHistory.reduce((total, record) => {
+                if (record.transactionType === 'purchase' || record.transactionType === 'return') {
+                  return total + parseFloat(record.quantity || 0);
+                } else {
+                  return total - parseFloat(record.quantity || 0);
+                }
+              }, 0);
+            } catch (error) {
+              strapi.log.error('Error fetching lot stock:', error);
+            }
+            
+            if (lotStock < requiredAmount) {
+              return ctx.badRequest(`Seçili lot (${selectedLot}) yetersiz stok. ${material.name} için gerekli: ${requiredAmount}, lot stoku: ${lotStock}`);
+            }
+            
+            // Create stock-history entry for usage (deduction) from the specific lot
+            await strapi.entityService.create('api::stock-history.stock-history', {
               data: {
-                currentStock: material.currentStock - requiredAmount
+                rawMaterial: rawMaterialId,
+                sku: sku,
+                lotNumber: selectedLot,
+                transactionType: 'usage',
+                quantity: requiredAmount,
+                unit: material.unit,
+                pricePerUnit: material.pricePerUnit || 0,
+                totalCost: requiredAmount * (material.pricePerUnit || 0),
+                supplier: `Production: ${currentBatch.batchNumber}`,
+                purchaseDate: new Date().toISOString(),
+                performedBy: data.updatedBy || 'system',
+                currentBalance: lotStock - requiredAmount,
+                notes: `Used for batch production: ${currentBatch.batchNumber} from lot ${selectedLot}${currentBatch.rawMaterialLots?.[sku] ? '' : ' [Auto-selected FIFO]'}`
               }
             });
             
-            strapi.log.info(`Deducted ${requiredAmount} ${material.unit} of ${material.name} from inventory`);
+            strapi.log.info(`Deducted ${requiredAmount} ${material.unit} of ${material.name} from lot ${selectedLot} via stock-history`);
           }
         }
 
@@ -292,6 +396,150 @@ module.exports = createCoreController('api::batch.batch', ({ strapi }) => ({
         }
       }
       
+      return ctx.badRequest(error.message);
+    }
+  },
+
+  /**
+   * Custom action to complete production and update inventory
+   */
+  async complete(ctx) {
+    try {
+      const { id } = ctx.params;
+      const { actualQuantity, wastage, qualityCheckedBy, qualityCheckNotes } = ctx.request.body;
+
+      if (!id) {
+        return ctx.badRequest('Batch ID is required');
+      }
+
+      if (actualQuantity === undefined || actualQuantity === null) {
+        return ctx.badRequest('actualQuantity is required');
+      }
+
+      if (wastage === undefined || wastage === null) {
+        return ctx.badRequest('wastage is required');
+      }
+
+      // Handle both numeric id and documentId
+      let batch;
+      if (isNaN(id)) {
+        batch = await strapi.db.query('api::batch.batch').findOne({
+          where: { documentId: id },
+          populate: ['recipe'],
+        });
+      } else {
+        batch = await strapi.entityService.findOne('api::batch.batch', id, {
+          populate: ['recipe'],
+        });
+      }
+      
+      if (!batch) {
+        return ctx.notFound('Batch not found');
+      }
+
+      if (!batch.recipe) {
+        return ctx.badRequest('Batch has no recipe associated');
+      }
+
+      const batchId = batch.id;
+      const recipeId = batch.recipe.id;
+
+      // Find or create inventory record for this recipe
+      const inventories = await strapi.db.query('api::inventory.inventory').findMany({
+        populate: ['recipe'],
+      });
+      
+      let inventory = inventories.find(inv => inv.recipe && inv.recipe.id === recipeId);
+
+      let currentStock = 0;
+      let newStock = 0;
+
+      if (inventory) {
+        currentStock = parseFloat(inventory.stock || 0);
+        newStock = currentStock + parseFloat(actualQuantity);
+        
+        // Update existing inventory
+        await strapi.db.query('api::inventory.inventory').update({
+          where: { id: inventory.id },
+          data: {
+            stock: newStock,
+            lastUpdated: new Date().toISOString(),
+          },
+        });
+      } else {
+        // Create new inventory record using db query
+        newStock = parseFloat(actualQuantity);
+        
+        // Get recipe name for the inventory
+        const recipe = await strapi.db.query('api::recipe.recipe').findOne({
+          where: { id: recipeId },
+          select: ['name']
+        });
+        
+        const inventoryRecord = await strapi.db.query('api::inventory.inventory').create({
+          data: {
+            name: recipe?.name || 'Unknown Recipe',
+            stock: newStock,
+            lastUpdated: new Date().toISOString(),
+          },
+        });
+        
+        // Link the recipe using the join table
+        await strapi.db.connection.raw(
+          'INSERT INTO inventories_recipe_lnk (inventory_id, recipe_id) VALUES (?, ?)',
+          [inventoryRecord.id, recipeId]
+        );
+      }
+
+      strapi.log.info(`=== Completing Production ===`);
+      strapi.log.info(`Batch ID: ${batchId}, Recipe ID: ${recipeId}`);
+      strapi.log.info(`Actual Quantity: ${actualQuantity}, Wastage: ${wastage}`);
+      strapi.log.info(`Current Stock: ${currentStock}, New Stock: ${newStock}`);
+
+      // Update batch with completion data and set to approved status
+      const currentUser = ctx.state.user;
+      const updateData = {
+        batchStatus: 'approved',
+        actualQuantity: parseFloat(actualQuantity),
+        wastage: parseFloat(wastage),
+      };
+      
+      // Add quality check fields if provided
+      if (qualityCheckedBy) {
+        updateData.qualityCheckedBy = qualityCheckedBy;
+        updateData.qualityCheckedAt = new Date().toISOString();
+        updateData.qualityCheckResult = 'passed';
+      }
+      
+      if (qualityCheckNotes) {
+        updateData.qualityCheckNotes = qualityCheckNotes;
+      }
+      
+      await strapi.entityService.update('api::batch.batch', batchId, {
+        data: updateData,
+      });
+
+      // Fetch the updated batch to return complete data
+      const updatedBatch = await strapi.entityService.findOne('api::batch.batch', batchId, {
+        populate: ['recipe', 'cargoCompany'],
+      });
+
+      strapi.log.info(`Production completed successfully. Stock updated from ${currentStock} to ${newStock}`);
+
+      return ctx.send({
+        message: 'Production completed and inventory updated',
+        data: {
+          batch: updatedBatch,
+          batchId,
+          recipeId,
+          actualQuantity: parseFloat(actualQuantity),
+          wastage: parseFloat(wastage),
+          previousStock: currentStock,
+          newStock,
+        },
+      });
+    } catch (error) {
+      strapi.log.error('Complete production error:', error);
       return ctx.badRequest(error.message);
     }
   },

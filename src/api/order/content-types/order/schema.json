@@ -1,0 +1,114 @@
+{
+  "kind": "collectionType",
+  "collectionName": "orders",
+  "info": {
+    "singularName": "order",
+    "pluralName": "orders",
+    "displayName": "Order",
+    "description": "Customer orders for products"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "recipe": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::recipe.recipe"
+    },
+    "customerName": {
+      "type": "string",
+      "required": true
+    },
+    "customerContact": {
+      "type": "string"
+    },
+    "quantity": {
+      "type": "decimal",
+      "required": true
+    },
+    "profitMargin": {
+      "type": "decimal",
+      "default": 0
+    },
+    "packagingEnabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "packagingCost": {
+      "type": "decimal",
+      "default": 0
+    },
+    "totalCost": {
+      "type": "decimal",
+      "default": 0
+    },
+    "totalSellingPrice": {
+      "type": "decimal",
+      "default": 0
+    },
+    "totalProfit": {
+      "type": "decimal",
+      "default": 0
+    },
+    "orderDate": {
+      "type": "datetime",
+      "required": true
+    },
+    "orderStatus": {
+      "type": "enumeration",
+      "enum": ["pending", "ready", "shipped", "cancelled"],
+      "default": "pending",
+      "required": true
+    },
+    "cancelledAt": {
+      "type": "datetime"
+    },
+    "cancelledBy": {
+      "type": "string"
+    },
+    "cancellationReason": {
+      "type": "text"
+    },
+    "orderCreatedBy": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "text"
+    },
+    "readyAt": {
+      "type": "datetime"
+    },
+    "readyBy": {
+      "type": "string"
+    },
+    "shippedAt": {
+      "type": "datetime"
+    },
+    "shippedBy": {
+      "type": "string"
+    },
+    "cargoCompany": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::cargo-company.cargo-company"
+    },
+    "trackingNumber": {
+      "type": "string"
+    },
+    "shipmentStatus": {
+      "type": "enumeration",
+      "enum": ["yolda", "dagitimda", "teslim_edildi", "bulunamadi"],
+      "default": "yolda"
+    },
+    "lotAllocations": {
+      "type": "json"
+    },
+    "lots": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::lot.lot"
+    }
+  }
+}

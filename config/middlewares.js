@@ -9,4 +9,11 @@ module.exports = [
   'strapi::session',
   'strapi::favicon',
   'strapi::public',
+  {
+    name: 'strapi::compression',
+    config: {
+      threshold: 1024, // Only compress responses > 1KB
+      level: 6, // Compression level (1-9, 6 is good balance)
+    },
+  },
 ];

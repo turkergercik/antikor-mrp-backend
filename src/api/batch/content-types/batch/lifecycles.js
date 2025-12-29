@@ -81,6 +81,52 @@ module.exports = {
       }
     }
   },
+
+  async afterUpdate(event) {
+    const { result, params } = event;
+    
+    console.log('=== Batch afterUpdate lifecycle triggered ===');
+    console.log('Result status:', result.batchStatus);
+    console.log('Previous data:', params.data);
+    
+    // Auto-create lot when batch is approved (quality check passed)
+    if (result.batchStatus === 'approved' && result.qualityCheckResult === 'passed') {
+      // Use setTimeout to completely defer lot creation outside transaction
+      setTimeout(async () => {
+        try {
+          // Double-check if lot already exists
+          const existingLots = await strapi.db.query('api::lot.lot').findMany({
+            where: { batch: { id: result.id } }
+          });
+
+          if (existingLots && existingLots.length > 0) {
+            console.log('Lot already exists for this batch, skipping creation');
+            return;
+          }
+
+          console.log('Creating lot for approved batch...');
+          
+          // Use actualQuantity if available, otherwise use quantity
+          const lotQuantity = result.actualQuantity && result.actualQuantity > 0 
+            ? result.actualQuantity 
+            : result.quantity;
+
+          const unitCost = result.totalCost / result.quantity;
+
+          await strapi.service('api::lot.lot').createFromBatch(
+            result.id,
+            lotQuantity,
+            unitCost
+          );
+
+          console.log('✓ Lot created successfully for batch:', result.batchNumber);
+        } catch (error) {
+          console.error('Error creating lot from batch:', error);
+          strapi.log.error('Lot creation failed:', error.message);
+        }
+      }, 1000); // 1 second delay to ensure transaction is complete
+    }
+  },
 };
 
 async function calculateBatchCost(data) {

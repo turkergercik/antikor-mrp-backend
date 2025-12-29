@@ -15,6 +15,7 @@
     "upgrade:dry": "npx @strapi/upgrade latest --dry"
   },
   "dependencies": {
+    "@mui/x-data-grid": "^8.21.0",
     "@strapi/plugin-cloud": "5.30.1",
     "@strapi/plugin-users-permissions": "5.30.1",
     "@strapi/strapi": "5.30.1",

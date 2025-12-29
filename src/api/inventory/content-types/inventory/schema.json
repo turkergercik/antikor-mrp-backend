@@ -1,0 +1,46 @@
+{
+  "kind": "collectionType",
+  "collectionName": "inventories",
+  "info": {
+    "singularName": "inventory",
+    "pluralName": "inventories",
+    "displayName": "Inventory",
+    "description": "Finished product inventory tracking"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": true
+    },
+    "content-type-builder": {
+      "visible": true
+    }
+  },
+  "settings": {
+    "mainField": "name"
+  },
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "recipe": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::recipe.recipe"
+    },
+    "stock": {
+      "type": "decimal",
+      "required": true,
+      "default": 0
+    },
+    "lastUpdated": {
+      "type": "datetime"
+    },
+    "notes": {
+      "type": "text"
+    }
+  }
+}

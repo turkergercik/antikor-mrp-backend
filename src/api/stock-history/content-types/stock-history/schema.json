@@ -1,0 +1,80 @@
+{
+  "kind": "collectionType",
+  "collectionName": "stock_histories",
+  "info": {
+    "singularName": "stock-history",
+    "pluralName": "stock-histories",
+    "displayName": "Stock History",
+    "description": "Raw material stock movement tracking"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "rawMaterial": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::raw-material.raw-material",
+      "required": true
+    },
+    "sku": {
+      "type": "string",
+      "required": true
+    },
+    "lotNumber": {
+      "type": "string",
+      "required": true
+    },
+    "transactionType": {
+      "type": "enumeration",
+      "enum": ["purchase", "usage", "adjustment", "return", "waste", "transfer"],
+      "default": "purchase",
+      "required": true
+    },
+    "quantity": {
+      "type": "decimal",
+      "required": true
+    },
+    "unit": {
+      "type": "string",
+      "required": true
+    },
+    "pricePerUnit": {
+      "type": "decimal",
+      "default": 0
+    },
+    "totalCost": {
+      "type": "decimal",
+      "default": 0
+    },
+    "supplier": {
+      "type": "string"
+    },
+    "purchaseDate": {
+      "type": "date"
+    },
+    "expiryDate": {
+      "type": "date"
+    },
+    "location": {
+      "type": "string"
+    },
+    "referenceNumber": {
+      "type": "string"
+    },
+    "referenceType": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "text"
+    },
+    "performedBy": {
+      "type": "string"
+    },
+    "currentBalance": {
+      "type": "decimal",
+      "default": 0
+    }
+  }
+}

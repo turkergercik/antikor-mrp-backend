@@ -476,14 +476,11 @@ export interface ApiBatchBatch extends Struct.CollectionTypeSchema {
     notes: Schema.Attribute.Text;
     orderCreatedAt: Schema.Attribute.String;
     orderCreatedBy: Schema.Attribute.String;
-    packaging: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
-    packagingCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     productionCompletedAt: Schema.Attribute.DateTime;
     productionCompletedBy: Schema.Attribute.String;
     productionDate: Schema.Attribute.DateTime & Schema.Attribute.Required;
     productionStartedAt: Schema.Attribute.DateTime;
     productionStartedBy: Schema.Attribute.String;
-    profitMargin: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     publishedAt: Schema.Attribute.DateTime;
     qualityCheckedAt: Schema.Attribute.DateTime;
     qualityCheckedBy: Schema.Attribute.String;
@@ -541,6 +538,175 @@ export interface ApiCargoCompanyCargoCompany
       Schema.Attribute.Unique;
     publishedAt: Schema.Attribute.DateTime;
     trackingUrl: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiInventoryInventory extends Struct.CollectionTypeSchema {
+  collectionName: 'inventories';
+  info: {
+    description: 'Finished product inventory tracking';
+    displayName: 'Inventory';
+    pluralName: 'inventories';
+    singularName: 'inventory';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  pluginOptions: {
+    'content-manager': {
+      visible: true;
+    };
+    'content-type-builder': {
+      visible: true;
+    };
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    lastUpdated: Schema.Attribute.DateTime;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::inventory.inventory'
+    > &
+      Schema.Attribute.Private;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    notes: Schema.Attribute.Text;
+    publishedAt: Schema.Attribute.DateTime;
+    recipe: Schema.Attribute.Relation<'oneToOne', 'api::recipe.recipe'>;
+    stock: Schema.Attribute.Decimal &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<0>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiLotLot extends Struct.CollectionTypeSchema {
+  collectionName: 'lots';
+  info: {
+    description: 'Lot-based inventory tracking for products';
+    displayName: 'Lot';
+    pluralName: 'lots';
+    singularName: 'lot';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  pluginOptions: {
+    'content-manager': {
+      visible: true;
+    };
+    'content-type-builder': {
+      visible: true;
+    };
+  };
+  attributes: {
+    batch: Schema.Attribute.Relation<'manyToOne', 'api::batch.batch'> &
+      Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    currentQuantity: Schema.Attribute.Decimal &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<0>;
+    expiryDate: Schema.Attribute.Date;
+    initialQuantity: Schema.Attribute.Decimal &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<0>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::lot.lot'> &
+      Schema.Attribute.Private;
+    location: Schema.Attribute.String;
+    lotNumber: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    notes: Schema.Attribute.Text;
+    productionDate: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    qualityCheckNotes: Schema.Attribute.Text;
+    qualityCheckResult: Schema.Attribute.Enumeration<
+      ['pending', 'passed', 'failed']
+    > &
+      Schema.Attribute.DefaultTo<'passed'>;
+    recipe: Schema.Attribute.Relation<'manyToOne', 'api::recipe.recipe'> &
+      Schema.Attribute.Required;
+    status: Schema.Attribute.Enumeration<
+      ['available', 'reserved', 'depleted', 'expired', 'recalled']
+    > &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'available'>;
+    totalCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    unit: Schema.Attribute.Enumeration<['liter', 'kg', 'piece']> &
+      Schema.Attribute.DefaultTo<'piece'>;
+    unitCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
+  collectionName: 'orders';
+  info: {
+    description: 'Customer orders for products';
+    displayName: 'Order';
+    pluralName: 'orders';
+    singularName: 'order';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    cancellationReason: Schema.Attribute.Text;
+    cancelledAt: Schema.Attribute.DateTime;
+    cancelledBy: Schema.Attribute.String;
+    cargoCompany: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::cargo-company.cargo-company'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    customerContact: Schema.Attribute.String;
+    customerName: Schema.Attribute.String & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::order.order'> &
+      Schema.Attribute.Private;
+    lotAllocations: Schema.Attribute.JSON;
+    lots: Schema.Attribute.Relation<'manyToMany', 'api::lot.lot'>;
+    notes: Schema.Attribute.Text;
+    orderCreatedBy: Schema.Attribute.String;
+    orderDate: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    orderStatus: Schema.Attribute.Enumeration<
+      ['pending', 'ready', 'shipped', 'cancelled']
+    > &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'pending'>;
+    packagingCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    packagingEnabled: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    profitMargin: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    publishedAt: Schema.Attribute.DateTime;
+    quantity: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    readyAt: Schema.Attribute.DateTime;
+    readyBy: Schema.Attribute.String;
+    recipe: Schema.Attribute.Relation<'manyToOne', 'api::recipe.recipe'>;
+    shipmentStatus: Schema.Attribute.Enumeration<
+      ['yolda', 'dagitimda', 'teslim_edildi', 'bulunamadi']
+    > &
+      Schema.Attribute.DefaultTo<'yolda'>;
+    shippedAt: Schema.Attribute.DateTime;
+    shippedBy: Schema.Attribute.String;
+    totalCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    totalProfit: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    totalSellingPrice: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    trackingNumber: Schema.Attribute.String;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -705,10 +871,11 @@ export interface ApiRecipeRecipe extends Struct.CollectionTypeSchema {
     batchUnit: Schema.Attribute.Enumeration<['liter', 'kg', 'piece']> &
       Schema.Attribute.DefaultTo<'liter'>;
     code: Schema.Attribute.String & Schema.Attribute.Unique;
-    costPerUnit: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    currency: Schema.Attribute.Enumeration<['USD', 'EUR', 'TRY']> &
+      Schema.Attribute.DefaultTo<'USD'>;
     description: Schema.Attribute.Text;
     ingredients: Schema.Attribute.Component<'recipe.ingredient', true> &
       Schema.Attribute.Required;
@@ -725,9 +892,10 @@ export interface ApiRecipeRecipe extends Struct.CollectionTypeSchema {
       Schema.Attribute.Unique;
     notes: Schema.Attribute.Text;
     preparationTime: Schema.Attribute.Integer;
-    profitMargin: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    productStock: Schema.Attribute.Decimal &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<0>;
     publishedAt: Schema.Attribute.DateTime;
-    sellingPrice: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     totalCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -773,6 +941,8 @@ export interface ApiShipmentShipment extends Struct.CollectionTypeSchema {
       'api::shipment.shipment'
     > &
       Schema.Attribute.Private;
+    lotAllocations: Schema.Attribute.JSON;
+    lots: Schema.Attribute.Relation<'manyToMany', 'api::lot.lot'>;
     notes: Schema.Attribute.Text;
     postalCode: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
@@ -804,6 +974,60 @@ export interface ApiShipmentShipment extends Struct.CollectionTypeSchema {
       Schema.Attribute.DefaultTo<'preparing'>;
     trackingHistory: Schema.Attribute.JSON;
     trackingNumber: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiStockHistoryStockHistory
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'stock_histories';
+  info: {
+    description: 'Raw material stock movement tracking';
+    displayName: 'Stock History';
+    pluralName: 'stock-histories';
+    singularName: 'stock-history';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    currentBalance: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    expiryDate: Schema.Attribute.Date;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::stock-history.stock-history'
+    > &
+      Schema.Attribute.Private;
+    location: Schema.Attribute.String;
+    lotNumber: Schema.Attribute.String & Schema.Attribute.Required;
+    notes: Schema.Attribute.Text;
+    performedBy: Schema.Attribute.String;
+    pricePerUnit: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    publishedAt: Schema.Attribute.DateTime;
+    purchaseDate: Schema.Attribute.Date;
+    quantity: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    rawMaterial: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::raw-material.raw-material'
+    > &
+      Schema.Attribute.Required;
+    referenceNumber: Schema.Attribute.String;
+    referenceType: Schema.Attribute.String;
+    sku: Schema.Attribute.String & Schema.Attribute.Required;
+    supplier: Schema.Attribute.String;
+    totalCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    transactionType: Schema.Attribute.Enumeration<
+      ['purchase', 'usage', 'adjustment', 'return', 'waste', 'transfer']
+    > &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'purchase'>;
+    unit: Schema.Attribute.String & Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1322,11 +1546,15 @@ declare module '@strapi/strapi' {
       'admin::user': AdminUser;
       'api::batch.batch': ApiBatchBatch;
       'api::cargo-company.cargo-company': ApiCargoCompanyCargoCompany;
+      'api::inventory.inventory': ApiInventoryInventory;
+      'api::lot.lot': ApiLotLot;
+      'api::order.order': ApiOrderOrder;
       'api::packaging.packaging': ApiPackagingPackaging;
       'api::quality-control.quality-control': ApiQualityControlQualityControl;
       'api::raw-material.raw-material': ApiRawMaterialRawMaterial;
       'api::recipe.recipe': ApiRecipeRecipe;
       'api::shipment.shipment': ApiShipmentShipment;
+      'api::stock-history.stock-history': ApiStockHistoryStockHistory;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;

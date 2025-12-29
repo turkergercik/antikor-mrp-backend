@@ -48,17 +48,15 @@
       "type": "decimal",
       "default": 0
     },
-    "costPerUnit": {
-      "type": "decimal",
-      "default": 0
+    "currency": {
+      "type": "enumeration",
+      "enum": ["USD", "EUR", "TRY"],
+      "default": "USD"
     },
-    "sellingPrice": {
+    "productStock": {
       "type": "decimal",
-      "default": 0
-    },
-    "profitMargin": {
-      "type": "decimal",
-      "default": 0
+      "default": 0,
+      "required": true
     },
     "instructions": {
       "type": "richtext"

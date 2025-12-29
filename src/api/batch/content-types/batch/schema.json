@@ -48,10 +48,6 @@
       "type": "decimal",
       "default": 0
     },
-    "profitMargin": {
-      "type": "decimal",
-      "default": 0
-    },
     "orderCreatedBy": {
       "type": "string"
     },
@@ -115,14 +111,6 @@
     },
     "notes": {
       "type": "text"
-    },
-    "packaging": {
-      "type": "boolean",
-      "default": false
-    },
-    "packagingCost": {
-      "type": "decimal",
-      "default": 0
     },
     "ingredientsUsed": {
       "type": "component",

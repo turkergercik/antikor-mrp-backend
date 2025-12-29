@@ -1,0 +1,96 @@
+{
+  "kind": "collectionType",
+  "collectionName": "lots",
+  "info": {
+    "singularName": "lot",
+    "pluralName": "lots",
+    "displayName": "Lot",
+    "description": "Lot-based inventory tracking for products"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": true
+    },
+    "content-type-builder": {
+      "visible": true
+    }
+  },
+  "settings": {
+    "mainField": "lotNumber"
+  },
+  "attributes": {
+    "lotNumber": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "recipe": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::recipe.recipe",
+      "required": true
+    },
+    "batch": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::batch.batch",
+      "required": true
+    },
+    "productionDate": {
+      "type": "datetime",
+      "required": true
+    },
+    "expiryDate": {
+      "type": "date"
+    },
+    "initialQuantity": {
+      "type": "decimal",
+      "required": true,
+      "default": 0
+    },
+    "currentQuantity": {
+      "type": "decimal",
+      "required": true,
+      "default": 0
+    },
+    "unit": {
+      "type": "enumeration",
+      "enum": ["liter", "kg", "piece"],
+      "default": "piece"
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["available", "reserved", "depleted", "expired", "recalled"],
+      "default": "available",
+      "required": true
+    },
+    "location": {
+      "type": "string"
+    },
+    "unitCost": {
+      "type": "decimal",
+      "default": 0
+    },
+    "totalCost": {
+      "type": "decimal",
+      "default": 0
+    },
+    "notes": {
+      "type": "text"
+    },
+    "qualityCheckResult": {
+      "type": "enumeration",
+      "enum": ["pending", "passed", "failed"],
+      "default": "passed"
+    },
+    "qualityCheckNotes": {
+      "type": "text"
+    },
+    "createdBy": {
+      "type": "string"
+    }
+  }
+}

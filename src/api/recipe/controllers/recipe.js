@@ -181,7 +181,9 @@ module.exports = createCoreController('api::recipe.recipe', ({ strapi }) => ({
       const { id } = ctx.params;
       const { batchMultiplier = 1 } = ctx.query;
 
-      const recipe = await strapi.entityService.findOne('api::recipe.recipe', id, {
+      // In Strapi v5, id in the URL is the documentId
+      const recipe = await strapi.db.query('api::recipe.recipe').findOne({
+        where: { documentId: id },
         populate: {
           ingredients: {
             populate: ['rawMaterial']
@@ -199,31 +201,55 @@ module.exports = createCoreController('api::recipe.recipe', ({ strapi }) => ({
       for (const ingredient of recipe.ingredients || []) {
         // Support both component (rawMaterial relation) and JSON (rawMaterialId) formats
         let rawMaterial = null;
-        let rawMaterialId = null;
+        let rawMaterialDocumentId = null;
 
         if (ingredient.rawMaterial) {
-          rawMaterialId = typeof ingredient.rawMaterial === 'object' 
-            ? ingredient.rawMaterial.id 
+          // In Strapi v5, relation can be documentId string or object
+          rawMaterialDocumentId = typeof ingredient.rawMaterial === 'object' 
+            ? ingredient.rawMaterial.documentId 
             : ingredient.rawMaterial;
           
           if (typeof ingredient.rawMaterial === 'object') {
             rawMaterial = ingredient.rawMaterial;
           }
         } else if (ingredient.rawMaterialId) {
-          rawMaterialId = ingredient.rawMaterialId;
+          rawMaterialDocumentId = ingredient.rawMaterialId;
         }
 
         // Fetch raw material if not already loaded
-        if (!rawMaterial && rawMaterialId) {
-          rawMaterial = await strapi.entityService.findOne(
-            'api::raw-material.raw-material',
-            rawMaterialId
-          );
+        if (!rawMaterial && rawMaterialDocumentId) {
+          rawMaterial = await strapi.db.query('api::raw-material.raw-material').findOne({
+            where: { documentId: rawMaterialDocumentId }
+          });
         }
 
         if (rawMaterial && ingredient.quantity) {
           const requiredQuantity = ingredient.quantity * batchMultiplier;
-          const isAvailable = rawMaterial.currentStock >= requiredQuantity;
+          
+          // Calculate current stock from stock-history
+          let currentStock = 0;
+          try {
+            const stockHistory = await strapi.entityService.findMany('api::stock-history.stock-history', {
+              filters: {
+                sku: rawMaterial.sku || rawMaterial.name
+              }
+            });
+
+            // Sum up transactions
+            currentStock = stockHistory.reduce((total, record) => {
+              if (record.transactionType === 'purchase' || record.transactionType === 'return') {
+                return total + parseFloat(record.quantity || 0);
+              } else {
+                return total - parseFloat(record.quantity || 0);
+              }
+            }, 0);
+          } catch (error) {
+            strapi.log.error('Error fetching stock history:', error);
+            // If stock-history doesn't exist yet, use old currentStock field as fallback
+            currentStock = rawMaterial.currentStock || 0;
+          }
+          
+          const isAvailable = currentStock >= requiredQuantity;
           
           if (!isAvailable) {
             canProduce = false;
@@ -233,10 +259,10 @@ module.exports = createCoreController('api::recipe.recipe', ({ strapi }) => ({
             materialId: rawMaterial.id,
             materialName: rawMaterial.name,
             required: requiredQuantity,
-            available: rawMaterial.currentStock,
+            available: currentStock,
             unit: rawMaterial.unit,
             isAvailable,
-            shortage: isAvailable ? 0 : requiredQuantity - rawMaterial.currentStock,
+            shortage: isAvailable ? 0 : requiredQuantity - currentStock,
           });
         }
       }

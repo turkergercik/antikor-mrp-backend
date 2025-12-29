@@ -84,6 +84,14 @@
     },
     "trackingHistory": {
       "type": "json"
+    },
+    "lotAllocations": {
+      "type": "json"
+    },
+    "lots": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::lot.lot"
     }
   }
 }
