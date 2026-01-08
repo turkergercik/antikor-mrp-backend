@@ -44,15 +44,6 @@
       "component": "recipe.ingredient",
       "required": true
     },
-    "totalCost": {
-      "type": "decimal",
-      "default": 0
-    },
-    "currency": {
-      "type": "enumeration",
-      "enum": ["USD", "EUR", "TRY"],
-      "default": "USD"
-    },
     "productStock": {
       "type": "decimal",
       "default": 0,
@@ -70,6 +61,19 @@
     },
     "notes": {
       "type": "text"
+    },
+    "totalCost": {
+      "type": "decimal"
+    },
+    "costPerUnit": {
+      "type": "decimal"
+    },
+    "sellingPrice": {
+      "type": "decimal"
+    },
+    "profitMargin": {
+      "type": "decimal",
+      "default": 0
     },
     "createdBy": {
       "type": "relation",

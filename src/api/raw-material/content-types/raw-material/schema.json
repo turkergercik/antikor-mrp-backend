@@ -30,17 +30,6 @@
       "default": "liter",
       "required": true
     },
-    "pricePerUnit": {
-      "type": "decimal",
-      "required": true,
-      "default": 0
-    },
-    "currency": {
-      "type": "enumeration",
-      "enum": ["TRY", "USD", "EUR", "GBP"],
-      "default": "TRY",
-      "required": true
-    },
     "currentStock": {
       "type": "decimal",
       "default": 0,
@@ -62,10 +51,6 @@
     },
     "packagingCapacity": {
       "type": "integer",
-      "default": 0
-    },
-    "costPerUnit": {
-      "type": "decimal",
       "default": 0
     },
     "notes": {

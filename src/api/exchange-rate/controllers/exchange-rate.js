@@ -9,7 +9,7 @@ module.exports = {
     try {
       // Fetch exchange rates from TCMB
       const response = await axios.get('https://www.tcmb.gov.tr/kurlar/today.xml', {
-        timeout: 5000,
+        timeout: 15000,
         headers: {
           'User-Agent': 'Mozilla/5.0'
         }

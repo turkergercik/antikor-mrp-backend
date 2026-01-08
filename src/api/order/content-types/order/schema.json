@@ -109,6 +109,33 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::lot.lot"
+    },
+    "requestedDeliveryDate": {
+      "type": "date",
+      "required": true
+    },
+    "confirmedDeliveryDate": {
+      "type": "date"
+    },
+    "deliveryDateStatus": {
+      "type": "enumeration",
+      "enum": ["pending_confirmation", "confirmed", "date_changed", "approved", "rejected"],
+      "default": "pending_confirmation"
+    },
+    "deliveryDateConfirmedBy": {
+      "type": "string"
+    },
+    "deliveryDateConfirmedAt": {
+      "type": "datetime"
+    },
+    "deliveryDateApprovedBy": {
+      "type": "string"
+    },
+    "deliveryDateApprovedAt": {
+      "type": "datetime"
+    },
+    "deliveryDateNotes": {
+      "type": "text"
     }
   }
 }

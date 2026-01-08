@@ -17,4 +17,5 @@ module.exports = ({ env }) => ({
     nps: env.bool('FLAG_NPS', true),
     promoteEE: env.bool('FLAG_PROMOTE_EE', true),
   },
+  url: env('PUBLIC_URL', 'http://localhost:1337'),
 });

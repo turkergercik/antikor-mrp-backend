@@ -5,17 +5,9 @@ module.exports = {
     console.log('=== Batch beforeCreate lifecycle triggered ===');
     console.log('Data received:', JSON.stringify(data, null, 2));
     
-    // Calculate batch cost before creation
-    if (data.recipe && data.quantity) {
-      try {
-        await calculateBatchCost(data);
-        console.log('Cost calculation completed. totalCost:', data.totalCost);
-      } catch (error) {
-        console.error('Error calculating batch cost before creation:', error);
-      }
-    } else {
-      console.log('Skipping cost calculation - missing recipe or quantity');
-    }
+    // Don't recalculate cost - frontend already sends the correct cost based on lot pricing
+    // The lifecycle hook was overwriting the frontend's lot-based calculation with current material prices
+    console.log('Batch totalCost from frontend (lot-based):', data.totalCost);
   },
 
   async beforeUpdate(event) {
@@ -61,25 +53,8 @@ module.exports = {
       }
     }
     
-    // Calculate batch cost before update if recipe or quantity changed
-    if (data.recipe !== undefined || data.quantity !== undefined) {
-      try {
-        // Get the batch to find current values if not provided
-        const batchId = event.params.where.id || event.params.where.documentId;
-        const batch = await strapi.entityService.findOne('api::batch.batch', batchId, {
-          populate: ['recipe'],
-        });
-        
-        const recipeId = data.recipe !== undefined ? data.recipe : batch.recipe?.id;
-        const quantity = data.quantity !== undefined ? data.quantity : batch.quantity;
-        
-        if (recipeId && quantity) {
-          await calculateBatchCost({ ...data, recipe: recipeId, quantity });
-        }
-      } catch (error) {
-        console.error('Error calculating batch cost before update:', error);
-      }
-    }
+    // Don't recalculate cost - the cost was already calculated correctly during batch creation
+    // Recalculating would use current material prices instead of the lot prices that were actually used
   },
 
   async afterUpdate(event) {
@@ -89,43 +64,8 @@ module.exports = {
     console.log('Result status:', result.batchStatus);
     console.log('Previous data:', params.data);
     
-    // Auto-create lot when batch is approved (quality check passed)
-    if (result.batchStatus === 'approved' && result.qualityCheckResult === 'passed') {
-      // Use setTimeout to completely defer lot creation outside transaction
-      setTimeout(async () => {
-        try {
-          // Double-check if lot already exists
-          const existingLots = await strapi.db.query('api::lot.lot').findMany({
-            where: { batch: { id: result.id } }
-          });
-
-          if (existingLots && existingLots.length > 0) {
-            console.log('Lot already exists for this batch, skipping creation');
-            return;
-          }
-
-          console.log('Creating lot for approved batch...');
-          
-          // Use actualQuantity if available, otherwise use quantity
-          const lotQuantity = result.actualQuantity && result.actualQuantity > 0 
-            ? result.actualQuantity 
-            : result.quantity;
-
-          const unitCost = result.totalCost / result.quantity;
-
-          await strapi.service('api::lot.lot').createFromBatch(
-            result.id,
-            lotQuantity,
-            unitCost
-          );
-
-          console.log('✓ Lot created successfully for batch:', result.batchNumber);
-        } catch (error) {
-          console.error('Error creating lot from batch:', error);
-          strapi.log.error('Lot creation failed:', error.message);
-        }
-      }, 1000); // 1 second delay to ensure transaction is complete
-    }
+    // Lot creation moved to batch controller's complete() method
+    // to avoid database transaction conflicts
   },
 };
 
@@ -188,20 +128,8 @@ async function calculateBatchCost(data) {
     } else if (recipe.totalCost && recipe.totalCost > 0 && recipe.batchSize && recipe.batchSize > 0) {
       costPerUnit = parseFloat(recipe.totalCost) / parseFloat(recipe.batchSize);
       console.log('Calculated costPerUnit from totalCost/batchSize:', costPerUnit);
-    } else if (recipe.ingredients && recipe.ingredients.length > 0) {
-      console.log('Calculating from ingredients...');
-      // Calculate from ingredients with populated raw materials
-      for (const ingredient of recipe.ingredients) {
-        const rawMaterial = ingredient.rawMaterial;
-        
-        if (rawMaterial && rawMaterial.pricePerUnit && ingredient.quantity) {
-          const ingredientCost = ingredient.quantity * rawMaterial.pricePerUnit;
-          costPerUnit += ingredientCost;
-          console.log(`  - ${rawMaterial.name}: ${ingredient.quantity} x ${rawMaterial.pricePerUnit} = ${ingredientCost}`);
-        }
-      }
-      console.log('Total costPerUnit from ingredients:', costPerUnit);
     }
+    // Note: Ingredient cost calculation removed - prices now managed in stock history
 
     const totalCost = costPerUnit * parseFloat(data.quantity);
     

@@ -30,5 +30,9 @@ module.exports = {
     strapi.log.info(`[BOOTSTRAP] Loading .env from: ${envPath}`);
     strapi.log.info('[BOOTSTRAP] GROQ_API_KEY loaded:', !!process.env.GROQ_API_KEY);
     strapi.log.info('[BOOTSTRAP] GROQ_API_KEY value:', process.env.GROQ_API_KEY?.substring(0, 20) + '...');
+    
+    // Initialize Socket.IO
+    const socketIO = require('./extensions/socket');
+    socketIO.initialize(strapi);
   },
 };

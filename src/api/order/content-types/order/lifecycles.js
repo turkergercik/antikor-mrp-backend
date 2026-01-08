@@ -6,9 +6,9 @@ module.exports = {
     console.log('Event params:', { data, where });
     console.log('data.orderStatus:', data.orderStatus);
     
-    // Only proceed if orderStatus is being changed
-    if (!data.orderStatus) {
-      console.log('⚠️ No orderStatus in data, skipping lifecycle');
+    // Only proceed if orderStatus is being changed to a production-related status
+    if (!data.orderStatus || !['processing', 'production', 'completed'].includes(data.orderStatus)) {
+      console.log('⚠️ No production-related orderStatus change, skipping inventory operations');
       return;
     }
 
@@ -61,14 +61,33 @@ module.exports = {
     if (data.orderStatus === 'ready' && currentOrder.orderStatus === 'pending') {
       console.log('🎯 STATUS TRANSITION MATCHED: pending → ready, proceeding with LOT-BASED stock deduction');
       
+      // Get order quantity for packaging calculation (used later)
+      const orderQuantity = parseFloat(currentOrder.quantity);
+      
       // Check if order has lot allocations
       if (currentOrder.lotAllocations) {
         try {
-          const allocations = JSON.parse(currentOrder.lotAllocations);
-          console.log('Deducting from lots:', allocations.length, 'allocations');
+          // Handle both string and already-parsed object
+          let allocations;
+          if (typeof currentOrder.lotAllocations === 'string') {
+            allocations = JSON.parse(currentOrder.lotAllocations);
+          } else {
+            allocations = currentOrder.lotAllocations;
+          }
           
-          // Deduct quantities from allocated lots
-          await strapi.service('api::lot.lot').deductFromLots(allocations);
+          console.log('Deducting from lots:', allocations.length, 'allocations');
+          console.log('Allocations:', JSON.stringify(allocations, null, 2));
+          
+          // Prepare order info for stock history
+          const orderInfo = {
+            customerName: currentOrder.customerName,
+            quantity: currentOrder.quantity,
+            notes: currentOrder.notes,
+            readyBy: data.readyBy || 'system'
+          };
+          
+          // Deduct quantities from allocated lots with order context
+          await strapi.service('api::lot.lot').deductFromLots(allocations, orderInfo);
           
           console.log('✓ Successfully deducted from lots');
         } catch (error) {
@@ -106,7 +125,6 @@ module.exports = {
           throw new Error('No inventory found for this recipe');
         }
 
-        const orderQuantity = parseFloat(currentOrder.quantity);
         const currentStock = parseFloat(inventory.stock || 0);
 
         console.log(`Checking stock for recipe ${recipe.name}: Current=${currentStock}, Required=${orderQuantity}`);
@@ -165,6 +183,8 @@ module.exports = {
             remaining20Parcels
           });
           
+          const currentUser = data.readyBy || 'Sistem';
+          
           // Deduct 20-piece parcels
           if (parcel20 && total20Parcels > 0) {
             const currentStock20 = parseFloat(parcel20.currentStock || 0);
@@ -174,6 +194,26 @@ module.exports = {
               data: { currentStock: newStock20 }
             });
             console.log(`📦 Deducted ${total20Parcels} x 20-piece parcels. Stock: ${currentStock20} -> ${newStock20}`);
+            
+            // Create stock history entry
+            await strapi.documents('api::stock-history.stock-history').create({
+              data: {
+                rawMaterial: parcel20.documentId,
+                sku: parcel20.sku || parcel20.name,
+                lotNumber: 'PACKAGING',
+                transactionType: 'usage',
+                quantity: -total20Parcels,
+                unit: parcel20.unit || 'piece',
+                pricePerUnit: parcel20.pricePerUnit || 0,
+                totalCost: (parcel20.pricePerUnit || 0) * total20Parcels,
+                supplier: `Sipariş: ${currentOrder.customerName}`,
+                referenceNumber: String(currentOrder.orderNumber || currentOrder.id),
+                referenceType: 'packaging',
+                notes: `Paketleme malzemesi kullanıldı (20'lik): ${orderQuantity} adet sipariş`,
+                performedBy: currentUser,
+                currentBalance: newStock20
+              }
+            });
           }
           
           // Deduct 100-piece containers
@@ -185,6 +225,26 @@ module.exports = {
               data: { currentStock: newStock100 }
             });
             console.log(`📦 Deducted ${needed100Parcels} x 100-piece containers. Stock: ${currentStock100} -> ${newStock100}`);
+            
+            // Create stock history entry
+            await strapi.documents('api::stock-history.stock-history').create({
+              data: {
+                rawMaterial: parcel100.documentId,
+                sku: parcel100.sku || parcel100.name,
+                lotNumber: 'PACKAGING',
+                transactionType: 'usage',
+                quantity: -needed100Parcels,
+                unit: parcel100.unit || 'piece',
+                pricePerUnit: parcel100.pricePerUnit || 0,
+                totalCost: (parcel100.pricePerUnit || 0) * needed100Parcels,
+                supplier: `Sipariş: ${currentOrder.customerName}`,
+                referenceNumber: String(currentOrder.orderNumber || currentOrder.id),
+                referenceType: 'packaging',
+                notes: `Paketleme malzemesi kullanıldı (100'lük): ${orderQuantity} adet sipariş`,
+                performedBy: currentUser,
+                currentBalance: newStock100
+              }
+            });
           }
           
           // Deduct 200-piece containers
@@ -196,6 +256,26 @@ module.exports = {
               data: { currentStock: newStock200 }
             });
             console.log(`📦 Deducted ${needed200Parcels} x 200-piece containers. Stock: ${currentStock200} -> ${newStock200}`);
+            
+            // Create stock history entry
+            await strapi.documents('api::stock-history.stock-history').create({
+              data: {
+                rawMaterial: parcel200.documentId,
+                sku: parcel200.sku || parcel200.name,
+                lotNumber: 'PACKAGING',
+                transactionType: 'usage',
+                quantity: -needed200Parcels,
+                unit: parcel200.unit || 'piece',
+                pricePerUnit: parcel200.pricePerUnit || 0,
+                totalCost: (parcel200.pricePerUnit || 0) * needed200Parcels,
+                supplier: `Sipariş: ${currentOrder.customerName}`,
+                referenceNumber: String(currentOrder.orderNumber || currentOrder.id),
+                referenceType: 'packaging',
+                notes: `Paketleme malzemesi kullanıldı (200'lük): ${orderQuantity} adet sipariş`,
+                performedBy: currentUser,
+                currentBalance: newStock200
+              }
+            });
           }
         }
       }
@@ -207,10 +287,24 @@ module.exports = {
         // If cancelling from ready status, return lots to inventory
         if (currentOrder.orderStatus === 'ready' && currentOrder.lotAllocations) {
           try {
-            const allocations = JSON.parse(currentOrder.lotAllocations);
+            // Handle both string and already-parsed object
+            let allocations;
+            if (typeof currentOrder.lotAllocations === 'string') {
+              allocations = JSON.parse(currentOrder.lotAllocations);
+            } else {
+              allocations = currentOrder.lotAllocations;
+            }
+            
             console.log('Returning lots to inventory for cancelled order:', allocations.length, 'allocations');
             
-            await strapi.service('api::lot.lot').returnToLots(allocations);
+            // Prepare return info for stock history
+            const returnInfo = {
+              customerName: currentOrder.customerName,
+              cancellationReason: data.cancellationReason || 'Order cancelled',
+              cancelledBy: data.cancelledBy || 'system'
+            };
+            
+            await strapi.service('api::lot.lot').returnToLots(allocations, returnInfo);
             
             console.log('✓ Successfully returned lots to inventory');
           } catch (error) {
@@ -250,5 +344,38 @@ module.exports = {
         }
       }
     }
+  },
+
+  async afterCreate(event) {
+    // NOTE: Socket.IO event is now emitted from the controller after recipe is linked
+    // Keeping this empty to maintain lifecycle structure
+  },
+
+  async afterUpdate(event) {
+    const { result } = event;
+    
+    try {
+      // Fetch the order with populated recipe to include full data
+      const fullOrder = await strapi.db.query('api::order.order').findOne({
+        where: { id: result.id },
+        populate: ['recipe']
+      });
+      
+      // Emit Socket.IO event for real-time updates
+      const socketIO = require('../../../../extensions/socket');
+      socketIO.emitOrderUpdated(fullOrder || result);
+    } catch (error) {
+      console.error('Error in afterUpdate lifecycle:', error);
+      const socketIO = require('../../../../extensions/socket');
+      socketIO.emitOrderUpdated(result);
+    }
+  },
+
+  async afterDelete(event) {
+    const { result } = event;
+    
+    // Emit Socket.IO event for real-time updates
+    const socketIO = require('../../../../extensions/socket');
+    socketIO.emitOrderDeleted(result.id);
   }
 };

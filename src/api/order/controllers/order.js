@@ -6,6 +6,54 @@ const { createCoreController } = require('@strapi/strapi').factories;
 
 module.exports = createCoreController('api::order.order', ({ strapi }) => ({
   /**
+   * Override update to handle documentId
+   */
+  async update(ctx) {
+    const { id } = ctx.params;
+    const { data } = ctx.request.body || {};
+
+    try {
+      console.log('=== Order Update Request ===');
+      console.log('ID:', id);
+      console.log('Data:', JSON.stringify(data));
+
+      // Handle both numeric id and documentId
+      let orderId = id;
+      
+      if (isNaN(id)) {
+        const order = await strapi.db.query('api::order.order').findOne({
+          where: { documentId: id },
+        });
+        
+        if (!order) {
+          return ctx.notFound('Order not found');
+        }
+        
+        orderId = order.id;
+        console.log('Converted documentId to numeric id:', orderId);
+      }
+
+      // Update the order
+      const entity = await strapi.entityService.update('api::order.order', orderId, {
+        data: data,
+        populate: ['recipe', 'cargoCompany', 'lots'],
+      });
+
+      console.log('Order updated successfully');
+      
+      // Emit Socket.IO event for real-time updates
+      const socketIO = require('../../../extensions/socket');
+      socketIO.emitOrderUpdated(entity);
+      
+      return this.transformResponse(entity);
+    } catch (error) {
+      console.error('Update order error:', error);
+      strapi.log.error('Update order error:', error);
+      return ctx.badRequest(error.message);
+    }
+  },
+
+  /**
    * Override create to handle lot-based inventory allocation
    */
   async create(ctx) {
@@ -45,16 +93,66 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
         return ctx.badRequest(`Recipe with documentId ${recipeId} not found`);
       }
       
-      // Allocate lots using FIFO strategy
-      console.log('Allocating lots for order...');
-      const allocationResult = await strapi.service('api::lot.lot').allocateLots(recipe.id, orderQuantity);
+      let allocationResult;
       
-      if (!allocationResult.success) {
-        console.error('Lot allocation failed:', allocationResult.message);
-        return ctx.badRequest(allocationResult.message);
-      }
+      // Check if manual lot selection is provided
+      if (data.manualLotSelection && Array.isArray(data.manualLotSelection)) {
+        console.log('Using manual lot selection:', data.manualLotSelection);
+        
+        const allocations = [];
+        let totalAllocated = 0;
+        
+        // Process each lot allocation (now with specific quantities)
+        for (const allocation of data.manualLotSelection) {
+          const lotNumber = allocation.lotNumber;
+          const requestedQty = parseFloat(allocation.quantity);
+          
+          const lot = await strapi.db.query('api::lot.lot').findOne({
+            where: { lotNumber: lotNumber }
+          });
+          
+          if (!lot) {
+            return ctx.badRequest(`Lot ${lotNumber} not found`);
+          }
+          
+          if (requestedQty > lot.currentQuantity) {
+            return ctx.badRequest(`Lot ${lotNumber}: Requested ${requestedQty} but only ${lot.currentQuantity} available`);
+          }
+          
+          allocations.push({
+            lotId: lot.id,
+            lotNumber: lot.lotNumber,
+            quantity: requestedQty,
+            cost: lot.averageUnitCost,
+            totalCost: lot.averageUnitCost * requestedQty
+          });
+          
+          totalAllocated += requestedQty;
+        }
+        
+        // Verify total allocated matches order quantity
+        if (totalAllocated !== orderQuantity) {
+          return ctx.badRequest(`Total allocated quantity (${totalAllocated}) does not match order quantity (${orderQuantity})`);
+        }
+        
+        allocationResult = {
+          success: true,
+          allocations: allocations
+        };
+        
+        console.log('Manual lot allocations created:', allocationResult.allocations);
+      } else {
+        // Allocate lots using FIFO strategy
+        console.log('Allocating lots using FIFO for order...');
+        allocationResult = await strapi.service('api::lot.lot').allocateLots(recipe.id, orderQuantity);
+        
+        if (!allocationResult.success) {
+          console.error('Lot allocation failed:', allocationResult.message);
+          return ctx.badRequest(allocationResult.message);
+        }
 
-      console.log('Lots allocated successfully:', allocationResult.allocations.length, 'lots');
+        console.log('Lots allocated successfully:', allocationResult.allocations.length, 'lots');
+      }
       
       // Clean up empty strings and prepare data
       const cleanData = { ...data };
@@ -62,6 +160,7 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
       if (cleanData.notes === '') delete cleanData.notes;
       if (cleanData.orderCreatedBy === '') delete cleanData.orderCreatedBy;
       delete cleanData.recipe; // Remove recipe from data, we'll link it separately
+      delete cleanData.manualLotSelection; // Remove manual lot selection (already processed)
       
       // Add lot allocations to order data
       cleanData.lotAllocations = JSON.stringify(allocationResult.allocations);
@@ -103,6 +202,10 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
       });
       
       console.log('Order created successfully with ID:', completeOrder.id);
+
+      // Emit Socket.IO event with complete order data
+      const socketIO = require('../../../extensions/socket');
+      socketIO.emitOrderCreated(completeOrder);
 
       // Note: Stock deduction from lots happens when order status changes to 'ready' in lifecycle
 

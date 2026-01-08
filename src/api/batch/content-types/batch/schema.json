@@ -112,6 +112,9 @@
     "notes": {
       "type": "text"
     },
+    "rawMaterialLots": {
+      "type": "json"
+    },
     "ingredientsUsed": {
       "type": "component",
       "repeatable": true,

@@ -143,7 +143,7 @@ module.exports = createCoreController('api::batch.batch', ({ strapi }) => ({
             
             // Get current stock
             const material = await strapi.entityService.findOne('api::raw-material.raw-material', rawMaterialId, {
-              fields: ['id', 'name', 'currentStock', 'unit', 'sku', 'pricePerUnit']
+              fields: ['id', 'name', 'currentStock', 'unit', 'sku']
             });
             
             if (!material) {
@@ -179,11 +179,20 @@ module.exports = createCoreController('api::batch.batch', ({ strapi }) => ({
               return ctx.badRequest(`Yetersiz ${material.name} stoku. Gerekli: ${requiredAmount}, Mevcut: ${currentStock}`);
             }
             
-            // Get the selected lot for this material from batch data
-            let selectedLot = currentBatch.rawMaterialLots?.[sku];
+            // Get the selected lot(s) for this material from batch data
+            const rawMaterialLotsData = currentBatch.rawMaterialLots?.[sku];
+            let lotAllocations = [];
             
-            // If no lot was selected (old batches or automatic mode), auto-select using FIFO
-            if (!selectedLot) {
+            // Check if it's multi-lot allocation (array) or single lot (string)
+            if (Array.isArray(rawMaterialLotsData)) {
+              // Multi-lot allocation: array of {lotNumber, quantity}
+              lotAllocations = rawMaterialLotsData;
+            } else if (rawMaterialLotsData) {
+              // Single lot: use full required quantity
+              lotAllocations = [{ lotNumber: rawMaterialLotsData, quantity: requiredAmount }];
+            } else {
+              // No lot selected - auto-select using FIFO
+              // No lot selected - auto-select using FIFO
               try {
                 const stockHistory = await strapi.entityService.findMany('api::stock-history.stock-history', {
                   filters: { sku: sku }
@@ -213,7 +222,8 @@ module.exports = createCoreController('api::batch.batch', ({ strapi }) => ({
                   .sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
 
                 if (availableLots.length > 0) {
-                  selectedLot = availableLots[0].lotNumber;
+                  const selectedLot = availableLots[0].lotNumber;
+                  lotAllocations = [{ lotNumber: selectedLot, quantity: requiredAmount }];
                   strapi.log.info(`Auto-selected lot ${selectedLot} for ${material.name} using FIFO`);
                 } else {
                   return ctx.badRequest(`${material.name} için kullanılabilir lot bulunamadı`);
@@ -224,51 +234,83 @@ module.exports = createCoreController('api::batch.batch', ({ strapi }) => ({
               }
             }
             
-            // Verify the selected lot has enough stock
-            let lotStock = 0;
-            try {
-              const lotHistory = await strapi.entityService.findMany('api::stock-history.stock-history', {
-                filters: { 
+            // Process each lot allocation
+            for (const allocation of lotAllocations) {
+              const { lotNumber: selectedLot, quantity: lotQuantity } = allocation;
+            
+              // Verify the selected lot has enough stock and get lot details
+              let lotStock = 0;
+              let lotPricePerUnit = 0;
+              let lotCurrency = 'USD';
+              try {
+                const lotHistory = await strapi.entityService.findMany('api::stock-history.stock-history', {
+                  filters: { 
+                    sku: sku,
+                    lotNumber: selectedLot
+                  }
+                });
+
+                lotStock = lotHistory.reduce((total, record) => {
+                  if (record.transactionType === 'purchase' || record.transactionType === 'return') {
+                    return total + parseFloat(record.quantity || 0);
+                  } else {
+                    return total - parseFloat(record.quantity || 0);
+                  }
+                }, 0);
+                
+                // Get price and currency from the first purchase/return entry of this lot
+                const purchaseRecord = lotHistory.find(r => r.transactionType === 'purchase' || r.transactionType === 'return');
+                if (purchaseRecord) {
+                  let pricePerUnit = parseFloat(purchaseRecord.pricePerUnit || 0);
+                  const originalCurrency = purchaseRecord.currency || 'USD';
+                  
+                  // Convert price to USD if needed (batches always work in USD)
+                  if (originalCurrency === 'TRY') {
+                    // Note: This conversion uses a hardcoded rate. Ideally should fetch from exchange rate API
+                    // For now, assume the price is already in USD
+                    lotPricePerUnit = pricePerUnit;
+                  } else if (originalCurrency === 'USD') {
+                    lotPricePerUnit = pricePerUnit;
+                  } else {
+                    lotPricePerUnit = pricePerUnit; // EUR, GBP etc - assume USD for now
+                  }
+                  lotCurrency = 'USD'; // Always USD for batch production
+                }
+              } catch (error) {
+                strapi.log.error('Error fetching lot stock:', error);
+              }
+              
+              // Verify lot has enough stock for this allocation
+              if (lotStock < lotQuantity) {
+                return ctx.badRequest(`Seçili lot (${selectedLot}) yetersiz stok. ${material.name} için gerekli: ${lotQuantity}, lot stoku: ${lotStock}`);
+              }
+              
+              // Calculate total cost for this usage (always in USD)
+              const usageTotalCost = lotPricePerUnit * lotQuantity;
+              
+              // Create stock-history entry for usage (deduction) from the specific lot
+              // Always use USD for batch production entries
+              await strapi.entityService.create('api::stock-history.stock-history', {
+                data: {
+                  rawMaterial: rawMaterialId,
                   sku: sku,
-                  lotNumber: selectedLot
+                  lotNumber: selectedLot,
+                  transactionType: 'usage',
+                  quantity: lotQuantity,
+                  unit: material.unit,
+                  pricePerUnit: lotPricePerUnit,
+                  currency: 'USD',
+                  totalCost: usageTotalCost,
+                  supplier: `Production: ${currentBatch.batchNumber}`,
+                  purchaseDate: new Date().toISOString(),
+                  performedBy: data.updatedBy || 'system',
+                  currentBalance: lotStock - lotQuantity,
+                  notes: `Used for batch production: ${currentBatch.batchNumber} from lot ${selectedLot}${lotAllocations.length > 1 ? ` (multi-lot: ${lotQuantity}/${requiredAmount})` : ''}${currentBatch.rawMaterialLots?.[sku] ? '' : ' [Auto-selected FIFO]'}`
                 }
               });
-
-              lotStock = lotHistory.reduce((total, record) => {
-                if (record.transactionType === 'purchase' || record.transactionType === 'return') {
-                  return total + parseFloat(record.quantity || 0);
-                } else {
-                  return total - parseFloat(record.quantity || 0);
-                }
-              }, 0);
-            } catch (error) {
-              strapi.log.error('Error fetching lot stock:', error);
+              
+              strapi.log.info(`Deducted ${lotQuantity} ${material.unit} of ${material.name} from lot ${selectedLot} via stock-history`);
             }
-            
-            if (lotStock < requiredAmount) {
-              return ctx.badRequest(`Seçili lot (${selectedLot}) yetersiz stok. ${material.name} için gerekli: ${requiredAmount}, lot stoku: ${lotStock}`);
-            }
-            
-            // Create stock-history entry for usage (deduction) from the specific lot
-            await strapi.entityService.create('api::stock-history.stock-history', {
-              data: {
-                rawMaterial: rawMaterialId,
-                sku: sku,
-                lotNumber: selectedLot,
-                transactionType: 'usage',
-                quantity: requiredAmount,
-                unit: material.unit,
-                pricePerUnit: material.pricePerUnit || 0,
-                totalCost: requiredAmount * (material.pricePerUnit || 0),
-                supplier: `Production: ${currentBatch.batchNumber}`,
-                purchaseDate: new Date().toISOString(),
-                performedBy: data.updatedBy || 'system',
-                currentBalance: lotStock - requiredAmount,
-                notes: `Used for batch production: ${currentBatch.batchNumber} from lot ${selectedLot}${currentBatch.rawMaterialLots?.[sku] ? '' : ' [Auto-selected FIFO]'}`
-              }
-            });
-            
-            strapi.log.info(`Deducted ${requiredAmount} ${material.unit} of ${material.name} from lot ${selectedLot} via stock-history`);
           }
         }
 
@@ -523,6 +565,30 @@ module.exports = createCoreController('api::batch.batch', ({ strapi }) => ({
       const updatedBatch = await strapi.entityService.findOne('api::batch.batch', batchId, {
         populate: ['recipe', 'cargoCompany'],
       });
+
+      // Create lot after transaction completes (outside of batch update transaction)
+      try {
+        console.log('=== Creating lot for approved batch ===');
+        console.log('Batch totalCost:', batch.totalCost);
+        console.log('Actual quantity:', actualQuantity);
+        console.log('New stock:', newStock);
+        
+        const unitCost = batch.totalCost && parseFloat(actualQuantity) > 0 
+          ? batch.totalCost / parseFloat(actualQuantity) 
+          : 0;
+        
+        console.log('Calculated unit cost:', unitCost);
+        
+        const lot = await strapi.service('api::lot.lot').createFromBatch(
+          batchId,
+          parseFloat(actualQuantity),
+          unitCost
+        );
+        console.log('✓ Lot created successfully:', lot.lotNumber, 'with unitCost:', lot.unitCost);
+      } catch (lotError) {
+        console.error('Warning: Could not create lot:', lotError.message);
+        // Don't fail the whole operation if lot creation fails
+      }
 
       strapi.log.info(`Production completed successfully. Stock updated from ${currentStock} to ${newStock}`);
 

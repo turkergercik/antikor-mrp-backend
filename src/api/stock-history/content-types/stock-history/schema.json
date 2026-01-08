@@ -28,7 +28,7 @@
     },
     "transactionType": {
       "type": "enumeration",
-      "enum": ["purchase", "usage", "adjustment", "return", "waste", "transfer"],
+      "enum": ["purchase", "production", "usage", "adjustment", "return", "waste", "transfer"],
       "default": "purchase",
       "required": true
     },
@@ -43,6 +43,11 @@
     "pricePerUnit": {
       "type": "decimal",
       "default": 0
+    },
+    "currency": {
+      "type": "enumeration",
+      "enum": ["TRY", "USD", "EUR", "GBP"],
+      "default": "USD"
     },
     "totalCost": {
       "type": "decimal",

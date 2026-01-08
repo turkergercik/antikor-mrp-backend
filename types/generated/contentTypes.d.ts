@@ -490,6 +490,7 @@ export interface ApiBatchBatch extends Struct.CollectionTypeSchema {
     > &
       Schema.Attribute.DefaultTo<'pending'>;
     quantity: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    rawMaterialLots: Schema.Attribute.JSON;
     recipe: Schema.Attribute.Relation<'manyToOne', 'api::recipe.recipe'>;
     shipmentStatus: Schema.Attribute.Enumeration<
       ['yolda', 'dagitimda', 'teslim_edildi', 'bulunamadi']
@@ -670,11 +671,27 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
       'manyToOne',
       'api::cargo-company.cargo-company'
     >;
+    confirmedDeliveryDate: Schema.Attribute.Date;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     customerContact: Schema.Attribute.String;
     customerName: Schema.Attribute.String & Schema.Attribute.Required;
+    deliveryDateApprovedAt: Schema.Attribute.DateTime;
+    deliveryDateApprovedBy: Schema.Attribute.String;
+    deliveryDateConfirmedAt: Schema.Attribute.DateTime;
+    deliveryDateConfirmedBy: Schema.Attribute.String;
+    deliveryDateNotes: Schema.Attribute.Text;
+    deliveryDateStatus: Schema.Attribute.Enumeration<
+      [
+        'pending_confirmation',
+        'confirmed',
+        'date_changed',
+        'approved',
+        'rejected',
+      ]
+    > &
+      Schema.Attribute.DefaultTo<'pending_confirmation'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::order.order'> &
       Schema.Attribute.Private;
@@ -697,6 +714,7 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
     readyAt: Schema.Attribute.DateTime;
     readyBy: Schema.Attribute.String;
     recipe: Schema.Attribute.Relation<'manyToOne', 'api::recipe.recipe'>;
+    requestedDeliveryDate: Schema.Attribute.Date & Schema.Attribute.Required;
     shipmentStatus: Schema.Attribute.Enumeration<
       ['yolda', 'dagitimda', 'teslim_edildi', 'bulunamadi']
     > &
@@ -814,13 +832,9 @@ export interface ApiRawMaterialRawMaterial extends Struct.CollectionTypeSchema {
   };
   attributes: {
     category: Schema.Attribute.String;
-    costPerUnit: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    currency: Schema.Attribute.Enumeration<['TRY', 'USD', 'EUR', 'GBP']> &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<'TRY'>;
     currentStock: Schema.Attribute.Decimal &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<0>;
@@ -838,9 +852,6 @@ export interface ApiRawMaterialRawMaterial extends Struct.CollectionTypeSchema {
       Schema.Attribute.Unique;
     notes: Schema.Attribute.Text;
     packagingCapacity: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
-    pricePerUnit: Schema.Attribute.Decimal &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<0>;
     publishedAt: Schema.Attribute.DateTime;
     sku: Schema.Attribute.String & Schema.Attribute.Unique;
     supplier: Schema.Attribute.String;
@@ -871,11 +882,10 @@ export interface ApiRecipeRecipe extends Struct.CollectionTypeSchema {
     batchUnit: Schema.Attribute.Enumeration<['liter', 'kg', 'piece']> &
       Schema.Attribute.DefaultTo<'liter'>;
     code: Schema.Attribute.String & Schema.Attribute.Unique;
+    costPerUnit: Schema.Attribute.Decimal;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    currency: Schema.Attribute.Enumeration<['USD', 'EUR', 'TRY']> &
-      Schema.Attribute.DefaultTo<'USD'>;
     description: Schema.Attribute.Text;
     ingredients: Schema.Attribute.Component<'recipe.ingredient', true> &
       Schema.Attribute.Required;
@@ -895,8 +905,10 @@ export interface ApiRecipeRecipe extends Struct.CollectionTypeSchema {
     productStock: Schema.Attribute.Decimal &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<0>;
+    profitMargin: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     publishedAt: Schema.Attribute.DateTime;
-    totalCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    sellingPrice: Schema.Attribute.Decimal;
+    totalCost: Schema.Attribute.Decimal;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -996,6 +1008,8 @@ export interface ApiStockHistoryStockHistory
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    currency: Schema.Attribute.Enumeration<['TRY', 'USD', 'EUR', 'GBP']> &
+      Schema.Attribute.DefaultTo<'USD'>;
     currentBalance: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     expiryDate: Schema.Attribute.Date;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
@@ -1023,7 +1037,15 @@ export interface ApiStockHistoryStockHistory
     supplier: Schema.Attribute.String;
     totalCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     transactionType: Schema.Attribute.Enumeration<
-      ['purchase', 'usage', 'adjustment', 'return', 'waste', 'transfer']
+      [
+        'purchase',
+        'production',
+        'usage',
+        'adjustment',
+        'return',
+        'waste',
+        'transfer',
+      ]
     > &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'purchase'>;
@@ -1291,8 +1313,8 @@ export interface PluginUploadFile extends Struct.CollectionTypeSchema {
     };
   };
   attributes: {
-    alternativeText: Schema.Attribute.String;
-    caption: Schema.Attribute.String;
+    alternativeText: Schema.Attribute.Text;
+    caption: Schema.Attribute.Text;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1316,7 +1338,7 @@ export interface PluginUploadFile extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     mime: Schema.Attribute.String & Schema.Attribute.Required;
     name: Schema.Attribute.String & Schema.Attribute.Required;
-    previewUrl: Schema.Attribute.String;
+    previewUrl: Schema.Attribute.Text;
     provider: Schema.Attribute.String & Schema.Attribute.Required;
     provider_metadata: Schema.Attribute.JSON;
     publishedAt: Schema.Attribute.DateTime;
@@ -1325,7 +1347,7 @@ export interface PluginUploadFile extends Struct.CollectionTypeSchema {
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    url: Schema.Attribute.String & Schema.Attribute.Required;
+    url: Schema.Attribute.Text & Schema.Attribute.Required;
     width: Schema.Attribute.Integer;
   };
 }

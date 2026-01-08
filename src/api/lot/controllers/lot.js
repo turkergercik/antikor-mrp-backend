@@ -152,11 +152,23 @@ module.exports = createCoreController('api::lot.lot', ({ strapi }) => ({
     const { recipeId } = ctx.params;
 
     try {
+      // Try to find recipe first to get its numeric ID if documentId was provided
+      let recipeFilter = recipeId;
+      
+      // If it looks like a documentId (contains letters), try to find the recipe
+      if (isNaN(recipeId)) {
+        const recipe = await strapi.db.query('api::recipe.recipe').findOne({
+          where: { documentId: recipeId }
+        });
+        
+        if (recipe) {
+          recipeFilter = recipe.id;
+        }
+      }
+
       const lots = await strapi.entityService.findMany('api::lot.lot', {
         filters: {
-          recipe: recipeId,
-          status: { $in: ['available', 'reserved'] },
-          currentQuantity: { $gt: 0 }
+          recipe: recipeFilter
         },
         populate: {
           recipe: true,
@@ -164,6 +176,8 @@ module.exports = createCoreController('api::lot.lot', ({ strapi }) => ({
         },
         sort: { expiryDate: 'asc', productionDate: 'asc' }
       });
+
+      strapi.log.info(`Found ${lots?.length || 0} lots for recipe ${recipeId} (filter: ${recipeFilter})`);
 
       return lots || [];
     } catch (error) {
@@ -181,21 +195,39 @@ module.exports = createCoreController('api::lot.lot', ({ strapi }) => ({
     try {
       const futureDate = new Date();
       futureDate.setDate(futureDate.getDate() + parseInt(days));
+      
+      const todayStr = new Date().toISOString().split('T')[0];
+      const futureStr = futureDate.toISOString().split('T')[0];
 
+      strapi.log.info(`Expiring lots query - today: ${todayStr}, future: ${futureStr}`);
+
+      // Get lots that are either expiring soon OR have 0 quantity
       const lots = await strapi.entityService.findMany('api::lot.lot', {
         filters: {
-          expiryDate: {
-            $lte: futureDate.toISOString().split('T')[0],
-            $gte: new Date().toISOString().split('T')[0]
-          },
-          status: { $in: ['available', 'reserved'] },
-          currentQuantity: { $gt: 0 }
+          $or: [
+            {
+              // Expiring soon
+              expiryDate: {
+                $lte: futureStr,
+                $gte: todayStr
+              }
+            },
+            {
+              // Zero quantity (depleted)
+              currentQuantity: 0
+            }
+          ]
         },
         populate: {
           recipe: true,
           batch: true
         },
         sort: { expiryDate: 'asc' }
+      });
+
+      strapi.log.info(`Found ${lots.length} expiring/depleted lots`);
+      lots.forEach(lot => {
+        strapi.log.info(`  Lot: ${lot.lotNumber}, Qty: ${lot.currentQuantity}, Expiry: ${lot.expiryDate}, Status: ${lot.status}`);
       });
 
       return lots || [];

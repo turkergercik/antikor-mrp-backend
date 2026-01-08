@@ -78,10 +78,12 @@ module.exports = {
     
     console.log('=== Lot afterUpdate lifecycle triggered ===');
     
+    // Inventory update is now handled manually in lot service
+    // to avoid transaction conflicts during batch completion
     // Update inventory totals
-    if (result.recipe) {
-      await updateInventoryFromLots(result.recipe.id || result.recipe);
-    }
+    // if (result.recipe) {
+    //   await updateInventoryFromLots(result.recipe.id || result.recipe);
+    // }
   },
 };
 

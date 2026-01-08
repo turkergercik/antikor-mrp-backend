@@ -1,0 +1,16 @@
+services:
+  postgres-local:
+    image: postgres:17-alpine
+    container_name: strapi-postgres-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: strapi
+      POSTGRES_PASSWORD: strapi
+      POSTGRES_DB: strapi_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-local-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-local-data:
