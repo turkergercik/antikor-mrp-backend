@@ -6,8 +6,8 @@ module.exports = {
     console.log('Event params:', { data, where });
     console.log('data.orderStatus:', data.orderStatus);
     
-    // Only proceed if orderStatus is being changed to a production-related status
-    if (!data.orderStatus || !['processing', 'production', 'completed'].includes(data.orderStatus)) {
+    // Only proceed if orderStatus is being changed to a production-related status, ready, or shipped
+    if (!data.orderStatus || !['processing', 'production', 'completed', 'ready', 'shipped'].includes(data.orderStatus)) {
       console.log('⚠️ No production-related orderStatus change, skipping inventory operations');
       return;
     }
@@ -58,8 +58,10 @@ module.exports = {
       shouldDeductStock: data.orderStatus === 'ready' && currentOrder.orderStatus === 'pending'
     });
     
-    if (data.orderStatus === 'ready' && currentOrder.orderStatus === 'pending') {
-      console.log('🎯 STATUS TRANSITION MATCHED: pending → ready, proceeding with LOT-BASED stock deduction');
+    // INVENTORY DEDUCTION MOVED TO SHIPMENT TIME (not at 'ready' status)
+    // This supports partial deliveries where inventory should be deducted as products are actually shipped
+    if (false && data.orderStatus === 'ready' && currentOrder.orderStatus === 'pending') {
+      console.log('🎯 STATUS TRANSITION MATCHED: pending → ready, SKIPPING stock deduction (will deduct at shipment time)');
       
       // Get order quantity for packaging calculation (used later)
       const orderQuantity = parseFloat(currentOrder.quantity);
@@ -154,6 +156,84 @@ module.exports = {
       if (currentOrder.packagingEnabled === true || currentOrder.packagingEnabled === 1) {
         console.log('📦 Packaging enabled, deducting packaging materials');
         
+        const currentUser = data.readyBy || 'Sistem';
+        
+        // Helper function to deduct packaging from FIFO stock history lots
+        const deductPackagingFromLots = async (material, quantityNeeded, packageType, performedBy) => {
+          try {
+            const sku = material.sku || material.name;
+            
+            // Get all purchase transactions sorted by date (FIFO)
+            const purchases = await strapi.db.query('api::stock-history.stock-history').findMany({
+              where: {
+                sku: sku,
+                transactionType: 'purchase',
+                lotNumber: { $ne: null }
+              },
+              orderBy: { createdAt: 'asc' }
+            });
+            
+            if (purchases.length === 0) {
+              console.warn(`⚠️ No purchase history found for packaging: ${sku}`);
+              return null;
+            }
+            
+            // Use the oldest lot (FIFO)
+            const oldestLot = purchases[0];
+            const lotNumber = oldestLot.lotNumber;
+            
+            // Get current balance for this lot from latest transaction
+            const latestTransaction = await strapi.db.query('api::stock-history.stock-history').findMany({
+              where: {
+                sku: sku,
+                lotNumber: lotNumber
+              },
+              orderBy: { createdAt: 'desc' },
+              limit: 1
+            });
+            
+            console.log(`📦 DEBUG ${packageType} - Latest transaction for Lot ${lotNumber}:`, latestTransaction.length > 0 ? {
+              id: latestTransaction[0].id,
+              type: latestTransaction[0].transactionType,
+              quantity: latestTransaction[0].quantity,
+              balance: latestTransaction[0].currentBalance,
+              date: latestTransaction[0].createdAt
+            } : 'NONE');
+            
+            const currentBalance = latestTransaction.length > 0 ? parseFloat(latestTransaction[0].currentBalance || 0) : 0;
+            const newBalance = currentBalance - quantityNeeded;
+            
+            console.log(`📦 ${packageType}: Lot ${lotNumber}, Balance: ${currentBalance} -> ${newBalance}, Deduct: ${quantityNeeded}`);
+            
+            // Create stock history entry for usage
+            await strapi.documents('api::stock-history.stock-history').create({
+              data: {
+                rawMaterial: material.documentId,
+                sku: sku,
+                lotNumber: lotNumber,
+                transactionType: 'usage',
+                quantity: quantityNeeded,
+                unit: material.unit || 'piece',
+                pricePerUnit: oldestLot.pricePerUnit || 0,
+                currency: oldestLot.currency || 'USD',
+                totalCost: (oldestLot.pricePerUnit || 0) * quantityNeeded,
+                supplier: `Sipariş: ${currentOrder.customerName}`,
+                referenceNumber: String(currentOrder.orderNumber || currentOrder.id),
+                referenceType: 'packaging',
+                purchaseDate: new Date().toISOString().split('T')[0],
+                notes: `Paketleme malzemesi kullanıldı (${packageType}): ${orderQuantity} adet sipariş`,
+                performedBy: performedBy,
+                currentBalance: newBalance
+              }
+            });
+            
+            return { lotNumber, oldBalance: currentBalance, newBalance };
+          } catch (error) {
+            console.error(`Error deducting packaging ${packageType}:`, error);
+            return null;
+          }
+        };
+        
         // Get all raw materials with packaging capacity
         const packagingMaterials = await strapi.db.query('api::raw-material.raw-material').findMany({
           where: {
@@ -183,100 +263,76 @@ module.exports = {
             remaining20Parcels
           });
           
-          const currentUser = data.readyBy || 'Sistem';
-          
           // Deduct 20-piece parcels
           if (parcel20 && total20Parcels > 0) {
-            const currentStock20 = parseFloat(parcel20.currentStock || 0);
-            const newStock20 = currentStock20 - total20Parcels;
-            await strapi.db.query('api::raw-material.raw-material').update({
-              where: { id: parcel20.id },
-              data: { currentStock: newStock20 }
-            });
-            console.log(`📦 Deducted ${total20Parcels} x 20-piece parcels. Stock: ${currentStock20} -> ${newStock20}`);
-            
-            // Create stock history entry
-            await strapi.documents('api::stock-history.stock-history').create({
-              data: {
-                rawMaterial: parcel20.documentId,
-                sku: parcel20.sku || parcel20.name,
-                lotNumber: 'PACKAGING',
-                transactionType: 'usage',
-                quantity: -total20Parcels,
-                unit: parcel20.unit || 'piece',
-                pricePerUnit: parcel20.pricePerUnit || 0,
-                totalCost: (parcel20.pricePerUnit || 0) * total20Parcels,
-                supplier: `Sipariş: ${currentOrder.customerName}`,
-                referenceNumber: String(currentOrder.orderNumber || currentOrder.id),
-                referenceType: 'packaging',
-                notes: `Paketleme malzemesi kullanıldı (20'lik): ${orderQuantity} adet sipariş`,
-                performedBy: currentUser,
-                currentBalance: newStock20
-              }
-            });
+            await deductPackagingFromLots(parcel20, total20Parcels, "20'lik", currentUser);
           }
           
           // Deduct 100-piece containers
           if (parcel100 && needed100Parcels > 0) {
-            const currentStock100 = parseFloat(parcel100.currentStock || 0);
-            const newStock100 = currentStock100 - needed100Parcels;
-            await strapi.db.query('api::raw-material.raw-material').update({
-              where: { id: parcel100.id },
-              data: { currentStock: newStock100 }
-            });
-            console.log(`📦 Deducted ${needed100Parcels} x 100-piece containers. Stock: ${currentStock100} -> ${newStock100}`);
-            
-            // Create stock history entry
-            await strapi.documents('api::stock-history.stock-history').create({
-              data: {
-                rawMaterial: parcel100.documentId,
-                sku: parcel100.sku || parcel100.name,
-                lotNumber: 'PACKAGING',
-                transactionType: 'usage',
-                quantity: -needed100Parcels,
-                unit: parcel100.unit || 'piece',
-                pricePerUnit: parcel100.pricePerUnit || 0,
-                totalCost: (parcel100.pricePerUnit || 0) * needed100Parcels,
-                supplier: `Sipariş: ${currentOrder.customerName}`,
-                referenceNumber: String(currentOrder.orderNumber || currentOrder.id),
-                referenceType: 'packaging',
-                notes: `Paketleme malzemesi kullanıldı (100'lük): ${orderQuantity} adet sipariş`,
-                performedBy: currentUser,
-                currentBalance: newStock100
-              }
-            });
+            await deductPackagingFromLots(parcel100, needed100Parcels, "100'lük", currentUser);
           }
           
           // Deduct 200-piece containers
           if (parcel200 && needed200Parcels > 0) {
-            const currentStock200 = parseFloat(parcel200.currentStock || 0);
-            const newStock200 = currentStock200 - needed200Parcels;
-            await strapi.db.query('api::raw-material.raw-material').update({
-              where: { id: parcel200.id },
-              data: { currentStock: newStock200 }
-            });
-            console.log(`📦 Deducted ${needed200Parcels} x 200-piece containers. Stock: ${currentStock200} -> ${newStock200}`);
-            
-            // Create stock history entry
-            await strapi.documents('api::stock-history.stock-history').create({
-              data: {
-                rawMaterial: parcel200.documentId,
-                sku: parcel200.sku || parcel200.name,
-                lotNumber: 'PACKAGING',
-                transactionType: 'usage',
-                quantity: -needed200Parcels,
-                unit: parcel200.unit || 'piece',
-                pricePerUnit: parcel200.pricePerUnit || 0,
-                totalCost: (parcel200.pricePerUnit || 0) * needed200Parcels,
-                supplier: `Sipariş: ${currentOrder.customerName}`,
-                referenceNumber: String(currentOrder.orderNumber || currentOrder.id),
-                referenceType: 'packaging',
-                notes: `Paketleme malzemesi kullanıldı (200'lük): ${orderQuantity} adet sipariş`,
-                performedBy: currentUser,
-                currentBalance: newStock200
-              }
-            });
+            await deductPackagingFromLots(parcel200, needed200Parcels, "200'lük", currentUser);
           }
+        }
+      }
+    }
+
+    // DEDUCT INVENTORY WHEN ORDER IS MARKED AS SHIPPED (full shipment via standard update)
+    // This handles the case where an order is marked as shipped directly without using the partial shipment endpoint
+    // IMPORTANT: Skip this if order has partial shipments, as inventory is deducted incrementally with each partial shipment
+    if (data.orderStatus === 'shipped' && currentOrder.orderStatus === 'ready') {
+      // Check if this is a partial shipment completion (has partialShipments array)
+      const hasPartialShipments = currentOrder.partialShipments && 
+                                  Array.isArray(currentOrder.partialShipments) && 
+                                  currentOrder.partialShipments.length > 0;
+      
+      if (hasPartialShipments) {
+        console.log('🚚 STATUS TRANSITION: ready → shipped via partial shipments');
+        console.log('⚠️ Skipping inventory deduction - already deducted incrementally with each partial shipment');
+        // Inventory was deducted incrementally with each partial shipment
+        // This final status change just marks the order as complete
+      } else {
+        console.log('🚚 STATUS TRANSITION: ready → shipped, deducting full order inventory');
+        
+        const orderQuantity = parseFloat(currentOrder.quantity);
+        
+        // Check if order has lot allocations
+        if (currentOrder.lotAllocations) {
+          try {
+            // Handle both string and already-parsed object
+            let allocations;
+            if (typeof currentOrder.lotAllocations === 'string') {
+              allocations = JSON.parse(currentOrder.lotAllocations);
+            } else {
+              allocations = currentOrder.lotAllocations;
+            }
+            
+            console.log('Deducting full order from lots:', allocations.length, 'allocations');
+            console.log('Allocations:', JSON.stringify(allocations, null, 2));
+            
+            // Prepare order info for stock history
+            const orderInfo = {
+              customerName: currentOrder.customerName,
+              quantity: currentOrder.quantity,
+              notes: currentOrder.notes,
+              readyBy: data.shippedBy || 'system'
+            };
+            
+            // Deduct quantities from allocated lots with order context
+            await strapi.service('api::lot.lot').deductFromLots(allocations, orderInfo);
+            
+            console.log('✓ Successfully deducted full order inventory at shipment time');
+          } catch (error) {
+            console.error('Error deducting inventory during full shipment:', error);
+            throw new Error(`Failed to deduct stock from lots: ${error.message}`);
+          }
+        } else {
+          console.warn('⚠️ No lot allocations found for order - cannot deduct inventory');
+          throw new Error('No lot allocations found for this order. Cannot ship without lot allocations.');
         }
       }
     }

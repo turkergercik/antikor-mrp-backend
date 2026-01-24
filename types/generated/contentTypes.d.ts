@@ -482,6 +482,7 @@ export interface ApiBatchBatch extends Struct.CollectionTypeSchema {
     productionStartedAt: Schema.Attribute.DateTime;
     productionStartedBy: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
+    qualityCheckAttachments: Schema.Attribute.Media<'images' | 'files', true>;
     qualityCheckedAt: Schema.Attribute.DateTime;
     qualityCheckedBy: Schema.Attribute.String;
     qualityCheckNotes: Schema.Attribute.Text;
@@ -692,28 +693,48 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
       ]
     > &
       Schema.Attribute.DefaultTo<'pending_confirmation'>;
+    fulfillmentMethod: Schema.Attribute.Enumeration<
+      ['from_stock', 'to_be_produced', 'mixed']
+    > &
+      Schema.Attribute.DefaultTo<'to_be_produced'>;
+    fulfillmentNotes: Schema.Attribute.Text;
+    fulfillmentStatus: Schema.Attribute.Enumeration<
+      ['not_fulfilled', 'partially_fulfilled', 'fully_fulfilled']
+    > &
+      Schema.Attribute.DefaultTo<'not_fulfilled'>;
+    linkedBatches: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<[]>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::order.order'> &
       Schema.Attribute.Private;
     lotAllocations: Schema.Attribute.JSON;
     lots: Schema.Attribute.Relation<'manyToMany', 'api::lot.lot'>;
+    lotsAllocatedAt: Schema.Attribute.DateTime;
+    lotsAllocatedBy: Schema.Attribute.String;
+    manualLotSelection: Schema.Attribute.JSON;
     notes: Schema.Attribute.Text;
     orderCreatedBy: Schema.Attribute.String;
     orderDate: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    orderNumber: Schema.Attribute.String & Schema.Attribute.Unique;
     orderStatus: Schema.Attribute.Enumeration<
-      ['pending', 'ready', 'shipped', 'cancelled']
+      ['pending', 'approved', 'planned', 'ready', 'shipped', 'cancelled']
     > &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'pending'>;
+    packagingBreakdown: Schema.Attribute.JSON;
     packagingCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     packagingEnabled: Schema.Attribute.Boolean &
       Schema.Attribute.DefaultTo<false>;
+    partialShipments: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<[]>;
     profitMargin: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     publishedAt: Schema.Attribute.DateTime;
     quantity: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    quantityFromStock: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    quantityToBeProduced: Schema.Attribute.Decimal &
+      Schema.Attribute.DefaultTo<0>;
     readyAt: Schema.Attribute.DateTime;
     readyBy: Schema.Attribute.String;
     recipe: Schema.Attribute.Relation<'manyToOne', 'api::recipe.recipe'>;
+    remainingQuantity: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     requestedDeliveryDate: Schema.Attribute.Date & Schema.Attribute.Required;
     shipmentStatus: Schema.Attribute.Enumeration<
       ['yolda', 'dagitimda', 'teslim_edildi', 'bulunamadi']
@@ -721,6 +742,7 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
       Schema.Attribute.DefaultTo<'yolda'>;
     shippedAt: Schema.Attribute.DateTime;
     shippedBy: Schema.Attribute.String;
+    shippedQuantity: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     totalCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     totalProfit: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     totalSellingPrice: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
@@ -835,9 +857,6 @@ export interface ApiRawMaterialRawMaterial extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    currentStock: Schema.Attribute.Decimal &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<0>;
     description: Schema.Attribute.Text;
     isActive: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
@@ -1050,6 +1069,44 @@ export interface ApiStockHistoryStockHistory
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'purchase'>;
     unit: Schema.Attribute.String & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiWorkerTodoWorkerTodo extends Struct.CollectionTypeSchema {
+  collectionName: 'worker_todos';
+  info: {
+    description: 'Daily to-do list for workers';
+    displayName: 'Worker Todo';
+    pluralName: 'worker-todos';
+    singularName: 'worker-todo';
+  };
+  options: {
+    comment: '';
+    draftAndPublish: false;
+  };
+  attributes: {
+    assignedTo: Schema.Attribute.String;
+    batch: Schema.Attribute.Relation<'manyToOne', 'api::batch.batch'>;
+    completed: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    date: Schema.Attribute.Date & Schema.Attribute.Required;
+    description: Schema.Attribute.Text;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::worker-todo.worker-todo'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Relation<'manyToOne', 'api::order.order'>;
+    priority: Schema.Attribute.Enumeration<['low', 'medium', 'high']> &
+      Schema.Attribute.DefaultTo<'medium'>;
+    publishedAt: Schema.Attribute.DateTime;
+    title: Schema.Attribute.String & Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1577,6 +1634,7 @@ declare module '@strapi/strapi' {
       'api::recipe.recipe': ApiRecipeRecipe;
       'api::shipment.shipment': ApiShipmentShipment;
       'api::stock-history.stock-history': ApiStockHistoryStockHistory;
+      'api::worker-todo.worker-todo': ApiWorkerTodoWorkerTodo;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;

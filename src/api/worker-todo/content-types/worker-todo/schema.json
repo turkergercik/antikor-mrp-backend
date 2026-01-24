@@ -1,0 +1,50 @@
+{
+  "kind": "collectionType",
+  "collectionName": "worker_todos",
+  "info": {
+    "singularName": "worker-todo",
+    "pluralName": "worker-todos",
+    "displayName": "Worker Todo",
+    "description": "Daily to-do list for workers"
+  },
+  "options": {
+    "draftAndPublish": false,
+    "comment": ""
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "date": {
+      "type": "date",
+      "required": true
+    },
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "description": {
+      "type": "text"
+    },
+    "completed": {
+      "type": "boolean",
+      "default": false
+    },
+    "priority": {
+      "type": "enumeration",
+      "enum": ["low", "medium", "high"],
+      "default": "medium"
+    },
+    "assignedTo": {
+      "type": "string"
+    },
+    "batch": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::batch.batch"
+    },
+    "order": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::order.order"
+    }
+  }
+}

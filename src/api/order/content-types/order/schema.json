@@ -21,6 +21,10 @@
       "type": "string",
       "required": true
     },
+    "orderNumber": {
+      "type": "string",
+      "unique": true
+    },
     "customerContact": {
       "type": "string"
     },
@@ -40,6 +44,9 @@
       "type": "decimal",
       "default": 0
     },
+    "packagingBreakdown": {
+      "type": "json"
+    },
     "totalCost": {
       "type": "decimal",
       "default": 0
@@ -58,7 +65,7 @@
     },
     "orderStatus": {
       "type": "enumeration",
-      "enum": ["pending", "ready", "shipped", "cancelled"],
+      "enum": ["pending", "approved", "planned", "ready", "shipped", "cancelled"],
       "default": "pending",
       "required": true
     },
@@ -105,6 +112,15 @@
     "lotAllocations": {
       "type": "json"
     },
+    "lotsAllocatedBy": {
+      "type": "string"
+    },
+    "lotsAllocatedAt": {
+      "type": "datetime"
+    },
+    "manualLotSelection": {
+      "type": "json"
+    },
     "lots": {
       "type": "relation",
       "relation": "manyToMany",
@@ -135,6 +151,43 @@
       "type": "datetime"
     },
     "deliveryDateNotes": {
+      "type": "text"
+    },
+    "fulfillmentMethod": {
+      "type": "enumeration",
+      "enum": ["from_stock", "to_be_produced", "mixed"],
+      "default": "to_be_produced"
+    },
+    "quantityFromStock": {
+      "type": "decimal",
+      "default": 0
+    },
+    "quantityToBeProduced": {
+      "type": "decimal",
+      "default": 0
+    },
+    "shippedQuantity": {
+      "type": "decimal",
+      "default": 0
+    },
+    "remainingQuantity": {
+      "type": "decimal",
+      "default": 0
+    },
+    "partialShipments": {
+      "type": "json",
+      "default": []
+    },
+    "linkedBatches": {
+      "type": "json",
+      "default": []
+    },
+    "fulfillmentStatus": {
+      "type": "enumeration",
+      "enum": ["not_fulfilled", "partially_fulfilled", "fully_fulfilled"],
+      "default": "not_fulfilled"
+    },
+    "fulfillmentNotes": {
       "type": "text"
     }
   }

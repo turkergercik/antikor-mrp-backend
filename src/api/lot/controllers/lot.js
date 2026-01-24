@@ -109,7 +109,12 @@ module.exports = createCoreController('api::lot.lot', ({ strapi }) => ({
     const { adjustment, reason, adjustedBy } = ctx.request.body;
 
     try {
-      const lot = await strapi.entityService.findOne('api::lot.lot', id);
+      const lot = await strapi.entityService.findOne('api::lot.lot', id, {
+        populate: {
+          recipe: true,
+          batch: true
+        }
+      });
 
       if (!lot) {
         return ctx.notFound('Lot not found');
@@ -125,6 +130,7 @@ module.exports = createCoreController('api::lot.lot', ({ strapi }) => ({
       const updatedLot = await strapi.entityService.update('api::lot.lot', id, {
         data: {
           currentQuantity: newQuantity,
+          status: newQuantity === 0 ? 'depleted' : lot.status,
           notes: `${lot.notes || ''}\n[${new Date().toISOString()}] Adjusted by ${adjustment} (${reason}) - ${adjustedBy}`.trim()
         },
         populate: {
@@ -132,6 +138,61 @@ module.exports = createCoreController('api::lot.lot', ({ strapi }) => ({
           batch: true
         }
       });
+
+      // Sync with stock history
+      try {
+        const sku = lot.recipe?.code || lot.recipe?.name;
+        
+        // Get current stock history balance for this lot
+        const stockHistory = await strapi.entityService.findMany('api::stock-history.stock-history', {
+          filters: {
+            sku: sku,
+            lotNumber: lot.lotNumber
+          },
+          sort: { createdAt: 'desc' }
+        });
+        
+        // Calculate current balance from stock history
+        let stockHistoryBalance = stockHistory.reduce((balance, t) => {
+          if (['purchase', 'production', 'return'].includes(t.transactionType)) {
+            return balance + parseFloat(t.quantity || 0);
+          } else if (['usage', 'sale', 'waste', 'imha'].includes(t.transactionType)) {
+            return balance - parseFloat(t.quantity || 0);
+          } else if (t.transactionType === 'adjustment') {
+            return balance - parseFloat(t.quantity || 0);
+          }
+          return balance;
+        }, 0);
+        
+        strapi.log.info(`[LOT-ADJUSTMENT] Lot ${lot.lotNumber}: currentQuantity=${lot.currentQuantity} -> ${newQuantity}, stockHistoryBalance=${stockHistoryBalance}`);
+        
+        // Create stock history transaction to match the lot adjustment
+        const adjustmentQty = parseFloat(adjustment);
+        const transactionType = adjustmentQty < 0 ? 'usage' : 'return';
+        const absAdjustment = Math.abs(adjustmentQty);
+        
+        await strapi.entityService.create('api::stock-history.stock-history', {
+          data: {
+            rawMaterial: lot.recipe?.id,
+            sku: sku,
+            lotNumber: lot.lotNumber,
+            transactionType: transactionType,
+            quantity: absAdjustment,
+            unit: lot.unit || 'piece',
+            notes: `Lot adjustment: ${reason}`,
+            performedBy: adjustedBy || 'system',
+            currentBalance: newQuantity,
+            pricePerUnit: 0,
+            totalCost: 0,
+            currency: 'USD'
+          }
+        });
+        
+        strapi.log.info(`[LOT-ADJUSTMENT] Created stock history transaction: ${transactionType} ${absAdjustment} ${lot.unit}`);
+      } catch (syncError) {
+        strapi.log.error('Failed to sync stock history:', syncError);
+        // Don't fail the whole operation if sync fails
+      }
 
       return {
         lot: updatedLot,

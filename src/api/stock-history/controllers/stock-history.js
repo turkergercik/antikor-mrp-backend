@@ -31,50 +31,39 @@ module.exports = createCoreController('api::stock-history.stock-history', ({ str
       };
     }
     
-    const result = await super.find(ctx);
+    // Handle filters from query params
+    const filters = ctx.query.filters || {};
     
-    // Calculate running balances for each item
-    if (result.data && result.data.length > 0) {
-      // Get unique SKU+lot combinations from the result
-      const combinations = [...new Set(result.data.map(item => `${item.sku}_${item.lotNumber}`))];
-      
-      // For each combination, fetch all history and calculate running balances
-      for (let combo of combinations) {
-        const [sku, lotNumber] = combo.split('_');
-        
-        // Fetch all transactions for this SKU+lot
-        const allTransactions = await strapi.entityService.findMany('api::stock-history.stock-history', {
-          filters: {
-            sku: sku,
-            lotNumber: lotNumber
-          },
-          sort: { createdAt: 'asc', id: 'asc' }
-        });
-        
-        // Calculate running balance
-        let runningBalance = 0;
-        const balanceMap = {};
-        
-        allTransactions.forEach(transaction => {
-          const quantity = parseFloat(transaction.quantity || 0);
-          if (transaction.transactionType === 'purchase' || transaction.transactionType === 'production' || transaction.transactionType === 'return') {
-            runningBalance += quantity;
-          } else {
-            runningBalance -= quantity;
-          }
-          balanceMap[transaction.id] = runningBalance;
-        });
-        
-        // Apply calculated balances to result items
-        result.data.forEach(item => {
-          if (item.sku === sku && item.lotNumber === lotNumber) {
-            item.currentBalance = balanceMap[item.id] || 0;
-          }
-        });
+    // Build query with filters
+    const query = {
+      populate: ctx.query.populate,
+      sort: ctx.query.sort || { createdAt: 'desc' },
+      pagination: {
+        page: ctx.query.pagination?.page || 1,
+        pageSize: ctx.query.pagination?.pageSize || 25
       }
+    };
+    
+    // Apply filters if provided
+    if (Object.keys(filters).length > 0) {
+      query.filters = filters;
     }
     
-    return result;
+    const result = await strapi.entityService.findMany('api::stock-history.stock-history', query);
+    const total = await strapi.db.query('api::stock-history.stock-history').count({ where: query.filters });
+    
+    // Format response
+    return {
+      data: result,
+      meta: {
+        pagination: {
+          page: query.pagination.page,
+          pageSize: query.pagination.pageSize,
+          pageCount: Math.ceil(total / query.pagination.pageSize),
+          total: total
+        }
+      }
+    };
   },
 
   async getBySKU(ctx) {
@@ -91,14 +80,24 @@ module.exports = createCoreController('api::stock-history.stock-history', ({ str
         sort: { createdAt: 'desc' }
       });
 
+      strapi.log.info(`[STOCK-HISTORY-GETBYSKU] ${sku} Total transactions: ${history.length}`);
+      strapi.log.info(`[STOCK-HISTORY-GETBYSKU] ${sku} ALL TRANSACTIONS:`);
+      history.forEach((record, index) => {
+        strapi.log.info(`  [${index}] Lot ${record.lotNumber}: ${record.transactionType} qty=${record.quantity} currentBalance=${record.currentBalance}`);
+      });
+
       // Calculate current stock from history
       const currentStock = history.reduce((total, record) => {
         if (record.transactionType === 'purchase' || record.transactionType === 'production' || record.transactionType === 'return') {
           return total + parseFloat(record.quantity || 0);
-        } else {
+        } else if (record.transactionType === 'usage' || record.transactionType === 'waste' || record.transactionType === 'imha') {
           return total - parseFloat(record.quantity || 0);
         }
+        // 'adjustment' doesn't affect stock total
+        return total;
       }, 0);
+      
+      strapi.log.info(`[STOCK-HISTORY-GETBYSKU] ${sku} *** CALCULATED STOCK: ${currentStock} ***`);
 
       ctx.body = {
         data: history || [],
@@ -153,17 +152,34 @@ module.exports = createCoreController('api::stock-history.stock-history', ({ str
       const allHistory = await strapi.entityService.findMany('api::stock-history.stock-history', {
         populate: {
           rawMaterial: true
-        }
+        },
+        sort: { createdAt: 'desc' }
       });
 
-      // Group by SKU and calculate totals
-      const summary = {};
+      strapi.log.info(`[STOCK-SUMMARY] Total transactions across all SKUs: ${allHistory.length}`);
+
+      // Group by SKU and lot
+      const lotTransactions = {};
       
       allHistory.forEach(record => {
-        if (!summary[record.sku]) {
-          summary[record.sku] = {
-            sku: record.sku,
-            rawMaterial: record.rawMaterial,
+        const key = `${record.sku}-${record.lotNumber}`;
+        if (!lotTransactions[key]) {
+          lotTransactions[key] = [];
+        }
+        lotTransactions[key].push(record);
+      });
+
+      // Build summary with totalStock (purchases) and currentBalance
+      const summary = {};
+      
+      Object.entries(lotTransactions).forEach(([key, transactions]) => {
+        const latestTransaction = transactions[0]; // Already sorted by createdAt desc
+        const sku = latestTransaction.sku;
+        
+        if (!summary[sku]) {
+          summary[sku] = {
+            sku: sku,
+            rawMaterial: latestTransaction.rawMaterial,
             lotDetails: {},
             totalStock: 0,
             currentBalance: 0,
@@ -171,56 +187,73 @@ module.exports = createCoreController('api::stock-history.stock-history', ({ str
           };
         }
 
-        // Track lot-level details
-        if (!summary[record.sku].lotDetails[record.lotNumber]) {
-          summary[record.sku].lotDetails[record.lotNumber] = {
-            lotNumber: record.lotNumber,
-            totalStock: 0,
-            currentBalance: 0,
-            transactionCount: 0,
-            pricePerUnit: 0,
-            totalCost: 0,
-            currency: record.currency || 'TRY',
-            purchaseDate: record.purchaseDate
-          };
+        // Calculate totalStock (sum of all purchases/production for this lot)
+        const totalStock = transactions
+          .filter(t => ['purchase', 'production', 'return'].includes(t.transactionType))
+          .reduce((sum, t) => sum + parseFloat(t.quantity || 0), 0);
+        
+        // Calculate currentBalance for THIS LOT ONLY by processing all its transactions
+        const lotCurrentBalance = transactions.reduce((balance, t) => {
+          if (['purchase', 'production', 'return'].includes(t.transactionType)) {
+            return balance + parseFloat(t.quantity || 0);
+          } else if (['usage', 'sale', 'waste', 'imha'].includes(t.transactionType)) {
+            return balance - parseFloat(t.quantity || 0);
+          } else if (t.transactionType === 'adjustment') {
+            // Adjustment can be positive or negative
+            return balance - parseFloat(t.quantity || 0);
+          }
+          return balance;
+        }, 0);
+        
+        strapi.log.info(`[STOCK-SUMMARY] ${sku} Lot ${latestTransaction.lotNumber}: totalStock=${totalStock} lotCurrentBalance=${lotCurrentBalance} (calculated from ${transactions.length} transactions)`);
+        
+        // Log detailed transactions for ready products (pieces)
+        if (latestTransaction.unit === 'piece') {
+          strapi.log.info(`  [DETAIL] ${sku} Lot ${latestTransaction.lotNumber} transactions:`);
+          transactions.forEach((t, idx) => {
+            strapi.log.info(`    [${idx}] ${t.transactionType}: ${t.quantity} ${t.unit} at ${t.createdAt}`);
+          });
         }
         
-        const quantity = parseFloat(record.quantity || 0);
+        summary[sku].lotDetails[latestTransaction.lotNumber] = {
+          lotNumber: latestTransaction.lotNumber,
+          totalStock: totalStock,
+          currentBalance: lotCurrentBalance,
+          transactionCount: transactions.length,
+          pricePerUnit: parseFloat(latestTransaction.pricePerUnit || 0),
+          totalCost: parseFloat(latestTransaction.totalCost || 0),
+          currency: latestTransaction.currency || 'TRY',
+          unit: latestTransaction.unit,
+          purchaseDate: latestTransaction.purchaseDate,
+          lastTransactionDate: latestTransaction.createdAt
+        };
         
-        if (record.transactionType === 'purchase' || record.transactionType === 'production' || record.transactionType === 'return') {
-          summary[record.sku].totalStock += quantity;
-          summary[record.sku].currentBalance += quantity;
-          summary[record.sku].lotDetails[record.lotNumber].totalStock += quantity;
-          summary[record.sku].lotDetails[record.lotNumber].currentBalance += quantity;
-          
-          // Update price info from purchase/production records
-          if (record.pricePerUnit) {
-            summary[record.sku].lotDetails[record.lotNumber].pricePerUnit = parseFloat(record.pricePerUnit);
-            summary[record.sku].lotDetails[record.lotNumber].currency = record.currency || 'TRY';
-          }
-          if (record.totalCost) {
-            summary[record.sku].lotDetails[record.lotNumber].totalCost += parseFloat(record.totalCost || 0);
-          }
-        } else {
-          summary[record.sku].currentBalance -= quantity;
-          summary[record.sku].lotDetails[record.lotNumber].currentBalance -= quantity;
+        // Add to SKU totals
+        summary[sku].totalStock += totalStock;
+        summary[sku].currentBalance += lotCurrentBalance;
+      });
+
+      // Get all transactions for each SKU
+      allHistory.forEach(record => {
+        if (summary[record.sku]) {
+          summary[record.sku].transactions.push(record);
         }
-        
-        summary[record.sku].lotDetails[record.lotNumber].transactionCount += 1;
-        summary[record.sku].transactions.push(record);
       });
 
       // Convert to array and format
-      const result = Object.values(summary).map(item => ({
-        sku: item.sku,
-        rawMaterial: item.rawMaterial,
-        lotCount: Object.keys(item.lotDetails).length,
-        lots: Object.values(item.lotDetails),
-        totalStock: item.totalStock,
-        currentBalance: item.currentBalance,
-        transactionCount: item.transactions.length,
-        lastTransaction: item.transactions[0]?.createdAt
-      }));
+      const result = Object.values(summary).map(item => {
+        strapi.log.info(`[STOCK-SUMMARY] ${item.sku} *** TOTAL currentBalance: ${item.currentBalance} *** (from ${Object.keys(item.lotDetails).length} lots)`);
+        return {
+          sku: item.sku,
+          rawMaterial: item.rawMaterial,
+          lotCount: Object.keys(item.lotDetails).length,
+          lots: Object.values(item.lotDetails),
+          totalStock: item.totalStock,
+          currentBalance: item.currentBalance,
+          transactionCount: item.transactions.length,
+          lastTransaction: item.transactions[0]?.createdAt
+        };
+      });
 
       ctx.body = { data: result };
     } catch (error) {

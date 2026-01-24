@@ -26,6 +26,7 @@ module.exports = createCoreService('api::lot.lot', ({ strapi }) => ({
       if (!lots || lots.length === 0) {
         return {
           success: false,
+          insufficientStock: true,
           message: 'No available lots found for this product',
           allocations: []
         };
@@ -78,18 +79,42 @@ module.exports = createCoreService('api::lot.lot', ({ strapi }) => ({
   async deductFromLots(allocations, orderInfo = null) {
     try {
       console.log('--- Deducting quantities from lots ---');
+      console.log('Allocations received:', JSON.stringify(allocations, null, 2));
       
       // Track which recipes need inventory updates
       const recipesToUpdate = new Set();
 
       for (const allocation of allocations) {
-        const lot = await strapi.entityService.findOne('api::lot.lot', allocation.lotId, {
-          populate: ['recipe', 'batch']
-        });
+        // Handle both documentId (string) and numeric id
+        let lot;
+        if (allocation.lotId && typeof allocation.lotId === 'string' && isNaN(allocation.lotId)) {
+          // It's a documentId (string like "eyjppdgq2zl6h7s5n8fpfp0m")
+          console.log('Looking up lot by documentId:', allocation.lotId);
+          lot = await strapi.db.query('api::lot.lot').findOne({
+            where: { documentId: allocation.lotId },
+            populate: ['recipe', 'batch']
+          });
+        } else if (allocation.lotNumber) {
+          // Look up by lot number
+          console.log('Looking up lot by lotNumber:', allocation.lotNumber);
+          lot = await strapi.db.query('api::lot.lot').findOne({
+            where: { lotNumber: allocation.lotNumber },
+            populate: ['recipe', 'batch']
+          });
+        } else {
+          // It's a numeric id
+          console.log('Looking up lot by numeric id:', allocation.lotId);
+          lot = await strapi.entityService.findOne('api::lot.lot', allocation.lotId, {
+            populate: ['recipe', 'batch']
+          });
+        }
 
         if (!lot) {
-          throw new Error(`Lot ${allocation.lotId} not found`);
+          throw new Error(`Lot ${allocation.lotId || allocation.lotNumber} not found`);
         }
+        
+        console.log(`Found lot: ${lot.lotNumber} (id: ${lot.id}, documentId: ${lot.documentId})`);
+
 
         const newQuantity = parseFloat(lot.currentQuantity) - parseFloat(allocation.quantity);
 
@@ -97,7 +122,7 @@ module.exports = createCoreService('api::lot.lot', ({ strapi }) => ({
           throw new Error(`Insufficient quantity in lot ${lot.lotNumber}`);
         }
 
-        await strapi.entityService.update('api::lot.lot', allocation.lotId, {
+        await strapi.entityService.update('api::lot.lot', lot.id, {
           data: {
             currentQuantity: newQuantity,
             status: newQuantity === 0 ? 'depleted' : lot.status
@@ -132,7 +157,7 @@ module.exports = createCoreService('api::lot.lot', ({ strapi }) => ({
                 currency: 'USD',
                 totalCost: (lot.unitCost || 0) * parseFloat(allocation.quantity),
                 supplier: orderInfo ? `Order: ${orderInfo.customerName || 'Customer'}` : 'Order',
-                purchaseDate: new Date().toISOString(),
+                purchaseDate: new Date().toISOString().split('T')[0],
                 performedBy: orderInfo?.readyBy || 'system',
                 currentBalance: newQuantity,
                 notes: orderInfo 

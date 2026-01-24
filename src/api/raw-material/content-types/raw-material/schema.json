@@ -30,11 +30,6 @@
       "default": "liter",
       "required": true
     },
-    "currentStock": {
-      "type": "decimal",
-      "default": 0,
-      "required": true
-    },
     "minStockLevel": {
       "type": "decimal",
       "default": 0

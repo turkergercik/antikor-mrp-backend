@@ -1,11 +1,13 @@
-'use strict';
+/**
+ * Generic find-index routes
+ */
 
 module.exports = {
   routes: [
     {
       method: 'GET',
-      path: '/cargo-companies/:id/find-index',
-      handler: 'custom.findIndex',
+      path: '/find-index/:contentType/:id',
+      handler: 'find-index.findIndex',
       config: {
         policies: [],
         middlewares: [],

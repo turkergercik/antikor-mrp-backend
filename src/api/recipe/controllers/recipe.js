@@ -226,23 +226,36 @@ module.exports = createCoreController('api::recipe.recipe', ({ strapi }) => ({
         if (rawMaterial && ingredient.quantity) {
           const requiredQuantity = ingredient.quantity * batchMultiplier;
           
-          // Calculate current stock from stock-history
+          // Calculate current stock from stock-history using currentBalance from DB
           let currentStock = 0;
           try {
             const stockHistory = await strapi.entityService.findMany('api::stock-history.stock-history', {
               filters: {
                 sku: rawMaterial.sku || rawMaterial.name
-              }
+              },
+              sort: { createdAt: 'desc' }
             });
 
-            // Sum up transactions
-            currentStock = stockHistory.reduce((total, record) => {
-              if (record.transactionType === 'purchase' || record.transactionType === 'return') {
-                return total + parseFloat(record.quantity || 0);
-              } else {
-                return total - parseFloat(record.quantity || 0);
+            strapi.log.info(`[CHECK-STOCK] ${rawMaterial.sku} Total transactions: ${stockHistory.length}`);
+            strapi.log.info(`[CHECK-STOCK] ${rawMaterial.sku} ALL TRANSACTIONS FROM DB:`);
+            stockHistory.forEach((record, index) => {
+              strapi.log.info(`  [${index}] Lot ${record.lotNumber}: ${record.transactionType} qty=${record.quantity} currentBalance=${record.currentBalance} date=${record.createdAt}`);
+            });
+
+            // Group by lot and use latest currentBalance per lot (sorted desc, so first is latest)
+            const lotBalances = {};
+            stockHistory.forEach(record => {
+              if (!(record.lotNumber in lotBalances)) {
+                lotBalances[record.lotNumber] = parseFloat(record.currentBalance || 0);
+                strapi.log.info(`[CHECK-STOCK] ${rawMaterial.sku} Lot ${record.lotNumber}: ✓ Using latest currentBalance=${record.currentBalance} from ${record.transactionType}`);
               }
-            }, 0);
+            });
+            
+            strapi.log.info(`[CHECK-STOCK] ${rawMaterial.sku} Final lot balances:`, lotBalances);
+            
+            // Sum all lot balances
+            currentStock = Object.values(lotBalances).reduce((sum, balance) => sum + balance, 0);
+            strapi.log.info(`[CHECK-STOCK] ${rawMaterial.sku} *** TOTAL STOCK: ${currentStock} ***`);
           } catch (error) {
             strapi.log.error('Error fetching stock history:', error);
             // If stock-history doesn't exist yet, use old currentStock field as fallback
