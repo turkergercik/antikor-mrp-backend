@@ -8,6 +8,14 @@ module.exports = {
     console.log('Starting stock-history currency fix...');
     
     try {
+      // Check if currency column exists
+      const hasColumn = await knex.schema.hasColumn('stock_histories', 'currency');
+      
+      if (!hasColumn) {
+        console.log('⚠️ Currency column does not exist in stock_histories table, skipping migration');
+        return 0;
+      }
+      
       // Update all stock-history records with currency TRY to USD
       const result = await knex('stock_histories')
         .where('currency', 'TRY')
@@ -28,6 +36,14 @@ module.exports = {
     console.log('Reverting stock-history currency fix...');
     
     try {
+      // Check if currency column exists
+      const hasColumn = await knex.schema.hasColumn('stock_histories', 'currency');
+      
+      if (!hasColumn) {
+        console.log('⚠️ Currency column does not exist in stock_histories table, skipping revert');
+        return 0;
+      }
+      
       // Revert back to TRY if needed
       const result = await knex('stock_histories')
         .where('currency', 'USD')

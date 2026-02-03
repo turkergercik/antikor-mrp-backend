@@ -18,4 +18,9 @@ module.exports = ({ env }) => ({
     promoteEE: env.bool('FLAG_PROMOTE_EE', true),
   },
   url: env('PUBLIC_URL', 'http://localhost:1337'),
+  serveAdminPanel: true,
+  autoOpen: false,
+  watchIgnoreFiles: [
+    '**/config/sync/**',
+  ],
 });

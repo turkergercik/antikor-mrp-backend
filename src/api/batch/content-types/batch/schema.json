@@ -48,6 +48,10 @@
       "type": "decimal",
       "default": 0
     },
+    "exitPrice": {
+      "type": "decimal",
+      "default": 0
+    },
     "orderCreatedBy": {
       "type": "string"
     },

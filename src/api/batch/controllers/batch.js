@@ -197,26 +197,42 @@ module.exports = createCoreController('api::batch.batch', ({ strapi }) => ({
               // No lot selected - auto-select using FIFO
               // No lot selected - auto-select using FIFO
               try {
-                const stockHistory = await strapi.entityService.findMany('api::stock-history.stock-history', {
-                  filters: { sku: sku }
+                // Use db.query to get all records without pagination
+                const stockHistory = await strapi.db.query('api::stock-history.stock-history').findMany({
+                  where: { sku: sku }
                 });
 
                 // Group by lot number
                 const lotMap = {};
+                strapi.log.info(`[FIFO DEBUG] Processing ${stockHistory.length} stock history entries for ${material.name} (SKU: ${sku})`);
+                
                 stockHistory.forEach(record => {
                   if (!lotMap[record.lotNumber]) {
                     lotMap[record.lotNumber] = {
                       lotNumber: record.lotNumber,
                       totalStock: 0,
-                      purchaseDate: record.purchaseDate
+                      purchaseDate: record.purchaseDate || record.createdAt
                     };
+                    strapi.log.info(`[FIFO DEBUG] New lot ${record.lotNumber}: initial date = ${record.purchaseDate || record.createdAt}`);
                   }
                   
-                  if (record.transactionType === 'purchase' || record.transactionType === 'return') {
+                  // Keep the earliest purchase date for FIFO
+                  if (record.purchaseDate || record.createdAt) {
+                    const recordDate = new Date(record.purchaseDate || record.createdAt);
+                    const currentDate = new Date(lotMap[record.lotNumber].purchaseDate);
+                    if (recordDate < currentDate) {
+                      strapi.log.info(`[FIFO DEBUG] Lot ${record.lotNumber}: updating date from ${lotMap[record.lotNumber].purchaseDate} to ${record.purchaseDate || record.createdAt} (older)`);
+                      lotMap[record.lotNumber].purchaseDate = record.purchaseDate || record.createdAt;
+                    }
+                  }
+                  
+                  // Calculate stock based on transaction type (same logic as stock-history controller)
+                  if (record.transactionType === 'purchase' || record.transactionType === 'production' || record.transactionType === 'return') {
                     lotMap[record.lotNumber].totalStock += parseFloat(record.quantity || 0);
-                  } else {
+                  } else if (record.transactionType === 'usage' || record.transactionType === 'waste' || record.transactionType === 'imha') {
                     lotMap[record.lotNumber].totalStock -= parseFloat(record.quantity || 0);
                   }
+                  // Note: 'adjustment' transactions are not included in stock calculation
                 });
 
                 // Get available lots and sort by FIFO (oldest first)
@@ -224,10 +240,15 @@ module.exports = createCoreController('api::batch.batch', ({ strapi }) => ({
                   .filter(lot => lot.totalStock > 0)
                   .sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
 
+                strapi.log.info(`[FIFO DEBUG] Available lots for ${material.name}:`);
+                availableLots.forEach((lot, idx) => {
+                  strapi.log.info(`[FIFO DEBUG]   [${idx}] Lot ${lot.lotNumber}: stock=${lot.totalStock}, date=${lot.purchaseDate}`);
+                });
+
                 if (availableLots.length > 0) {
                   const selectedLot = availableLots[0].lotNumber;
                   lotAllocations = [{ lotNumber: selectedLot, quantity: requiredAmount }];
-                  strapi.log.info(`Auto-selected lot ${selectedLot} for ${material.name} using FIFO`);
+                  strapi.log.info(`[FIFO DEBUG] ✓ Selected lot ${selectedLot} for ${material.name} (oldest: ${availableLots[0].purchaseDate})`);
                 } else {
                   return ctx.badRequest(`${material.name} için kullanılabilir lot bulunamadı`);
                 }

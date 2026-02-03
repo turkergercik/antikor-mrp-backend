@@ -138,7 +138,8 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
         allocationResult = {
           success: true,
           allocations: [],
-          insufficientStock: false
+          insufficientStock: false,
+          isProductionOnly: true // Flag to indicate no lots should be allocated
         };
       } else if (data.manualLotSelection && Array.isArray(data.manualLotSelection)) {
         console.log('Using manual lot selection:', data.manualLotSelection);
@@ -245,8 +246,9 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
         cleanData.notes = cleanData.notes
           ? `${cleanData.notes}\n\n⚠️ Insufficient stock: ${allocationResult.message}`
           : `⚠️ Insufficient stock: ${allocationResult.message}`;
-      } else if (allocationResult.allocations && allocationResult.allocations.length > 0) {
+      } else if (allocationResult.allocations && allocationResult.allocations.length > 0 && !allocationResult.isProductionOnly) {
         // Add allocation tracking metadata only if lots were actually allocated
+        // Don't set for production-only orders where no lots are allocated
         cleanData.lotsAllocatedBy = cleanData.orderCreatedBy || 'System';
         cleanData.lotsAllocatedAt = new Date();
       }
@@ -254,35 +256,38 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
       // Add lot allocations to order data
       cleanData.lotAllocations = JSON.stringify(allocationResult.allocations);
 
-      // Calculate actual cost from allocated lots
+      // Calculate subcontractor pricing based on selected price type
+      const priceType = data.priceType || 'bayi';
+      const manufacturingCost = parseFloat(recipe.manufacturingCost) || 0;
+      let selectedPrice = 0;
+      
+      // Get the selected price tier from recipe
+      if (priceType === 'bayi') {
+        selectedPrice = parseFloat(recipe.bayiFiyati) || 0;
+      } else if (priceType === 'son_kullanici') {
+        selectedPrice = parseFloat(recipe.sonKullaniciFiyati) || 0;
+      } else if (priceType === 'yurtdisi') {
+        selectedPrice = parseFloat(recipe.yurtdisiFiyati) || 0;
+      }
+      
+      // Calculate subcontractor cost: (Selected Price - Manufacturing Cost) + 30% markup
+      let subcontractorCostPerUnit = 0;
+      if (selectedPrice > 0 && manufacturingCost > 0) {
+        const difference = selectedPrice - manufacturingCost;
+        subcontractorCostPerUnit = difference + (difference * 0.30); // +30% markup
+        console.log(`🏭 Subcontractor pricing - Price: ${selectedPrice}, Manufacturing: ${manufacturingCost}, Difference: ${difference}, +30%: ${subcontractorCostPerUnit.toFixed(2)}`);
+      }
+      
+      cleanData.subcontractorCost = subcontractorCostPerUnit * orderQuantity;
+      console.log(`🏭 Total subcontractor cost for ${orderQuantity} units: ${cleanData.subcontractorCost.toFixed(2)}`);
+
+      // Recalculate totalCost from lot allocations - cost should be based on selected lots
       if (allocationResult.allocations && allocationResult.allocations.length > 0) {
         const totalCostFromLots = allocationResult.allocations.reduce((sum, alloc) => sum + (alloc.totalCost || 0), 0);
-        const allocatedQuantity = allocationResult.allocations.reduce((sum, alloc) => sum + parseFloat(alloc.quantity), 0);
-
-        console.log(`💰 Order creation - Cost from allocated lots: $${totalCostFromLots.toFixed(2)} for ${allocatedQuantity} items`);
-
-        // Update totalCost with actual lot costs
         cleanData.totalCost = totalCostFromLots;
-
-        // Recalculate selling price based on actual cost
-        let totalSellingPrice = totalCostFromLots;
-
-        // Add packaging cost (not proportional - you need whole boxes)
-        if (data.packagingCost) {
-          totalSellingPrice += parseFloat(data.packagingCost);
-          console.log(`📦 Adding packaging cost: $${data.packagingCost}`);
-        }
-
-        if (data.profitMargin) {
-          const profitAmount = totalSellingPrice * (parseFloat(data.profitMargin) / 100);
-          totalSellingPrice += profitAmount;
-          console.log(`💵 Applying profit margin ${data.profitMargin}%: +$${profitAmount.toFixed(2)}`);
-        }
-
-        cleanData.totalSellingPrice = totalSellingPrice;
-        cleanData.totalProfit = totalSellingPrice - totalCostFromLots - (cleanData.packagingCost || 0);
-
-        console.log(`💰 Final prices - Cost: $${totalCostFromLots.toFixed(2)}, Selling: $${totalSellingPrice.toFixed(2)}, Profit: $${cleanData.totalProfit.toFixed(2)}`);
+        const allocatedQuantity = allocationResult.allocations.reduce((sum, alloc) => sum + parseFloat(alloc.quantity), 0);
+        console.log(`💰 Order creation - Allocated ${allocatedQuantity} items from lots, totalCost from lots: $${totalCostFromLots.toFixed(2)}`);
+        console.log(`💰 Final prices - Cost: $${totalCostFromLots.toFixed(2)}, Selling: $${data.totalSellingPrice?.toFixed(2) || 0}, Profit: $${data.totalProfit?.toFixed(2) || 0}`);
       }
 
       // For mixed fulfillment, calculate and store stock vs production quantities
@@ -763,6 +768,16 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
       let hasInsufficientStock = false;
       let insufficientMessage = '';
 
+      // Fetch extraCost from database
+      let extraCostPerUnit = 0;
+      try {
+        const extraCostEntry = await strapi.db.query('api::extra-cost.extra-cost').findOne({});
+        extraCostPerUnit = parseFloat(extraCostEntry?.amount || 0);
+        console.log(`📊 Extra cost per unit: $${extraCostPerUnit.toFixed(2)}`);
+      } catch (error) {
+        console.warn('Could not fetch extra cost, using 0:', error.message);
+      }
+
       for (const allocation of manualLotSelection) {
         const lotNumber = allocation.lotNumber;
         const requestedQty = parseFloat(allocation.quantity);
@@ -786,12 +801,16 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
         }
 
         const unitCost = lot.averageUnitCost || lot.unitCost || 0;
-        const lotTotalCost = unitCost * requestedQty;
+        // Add extraCost to unitCost before multiplying by quantity
+        const unitCostWithExtra = unitCost + extraCostPerUnit;
+        const lotTotalCost = unitCostWithExtra * requestedQty;
 
         console.log(`📊 Lot ${lotNumber} cost calculation:`, {
           averageUnitCost: lot.averageUnitCost,
           unitCost: lot.unitCost,
+          extraCost: extraCostPerUnit,
           finalUnitCost: unitCost,
+          unitCostWithExtra: unitCostWithExtra,
           quantity: requestedQty,
           totalCost: lotTotalCost
         });
@@ -800,7 +819,9 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
           lotId: lot.id,
           lotNumber: lot.lotNumber,
           quantity: requestedQty,
-          cost: unitCost,
+          unitCost: unitCost,
+          extraCost: extraCostPerUnit,
+          cost: unitCostWithExtra, // This is used for backward compatibility
           totalCost: lotTotalCost
         });
 
@@ -828,35 +849,13 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
         console.log(`📝 Converting order from 'to_be_produced' to 'mixed' (allocating ${totalAllocated} from stock, ${orderQuantity - totalAllocated} to be produced)`);
       }
 
-      // Calculate total cost from allocated lots
-      const totalCostFromLots = allocations.reduce((sum, alloc) => sum + (alloc.totalCost || 0), 0);
-
-      console.log(`💰 Cost calculation - Total from lots: $${totalCostFromLots.toFixed(2)}`);
       console.log(`📊 Order packaging cost: $${order.packagingCost}, Profit margin: ${order.profitMargin}%`);
 
-      // Recalculate selling price based on new cost
-      // Add packaging cost if enabled
-      let totalSellingPrice = totalCostFromLots;
+      // Recalculate totalCost from lot allocations - cost should be based on selected lots
+      const totalCostFromLots = allocations.reduce((sum, alloc) => sum + (alloc.totalCost || 0), 0);
+      const totalSellingPrice = order.totalSellingPrice;
 
-      if (order.packagingCost && parseFloat(order.packagingCost) > 0) {
-        const packagingCost = parseFloat(order.packagingCost);
-        totalSellingPrice += packagingCost;
-        console.log(`📦 Adding packaging cost: $${packagingCost.toFixed(2)} (new total: $${totalSellingPrice.toFixed(2)})`);
-      } else {
-        console.log(`⚠️ No packaging cost to add (packagingCost: ${order.packagingCost})`);
-      }
-
-      // Apply profit margin if set
-      if (order.profitMargin && parseFloat(order.profitMargin) > 0) {
-        const profitMargin = parseFloat(order.profitMargin);
-        const profitAmount = totalSellingPrice * (profitMargin / 100);
-        totalSellingPrice += profitAmount;
-        console.log(`💵 Applying profit margin ${profitMargin}%: +$${profitAmount.toFixed(2)} (new total: $${totalSellingPrice.toFixed(2)})`);
-      } else {
-        console.log(`⚠️ No profit margin to apply (profitMargin: ${order.profitMargin})`);
-      }
-
-      console.log(`💰 Final selling price: $${totalSellingPrice.toFixed(2)} (cost: $${totalCostFromLots.toFixed(2)}, packaging: $${order.packagingCost || 0}, margin: ${order.profitMargin || 0}%)`);
+      console.log(`💰 Cost calculation - Total from lots: $${totalCostFromLots.toFixed(2)}, Selling: $${totalSellingPrice.toFixed(2)}`);
 
       // NOTE: Stock deduction happens at SHIPMENT time, not allocation time
       // This allows proper tracking of inventory and supports partial shipments
@@ -866,9 +865,7 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
       // Update order with lot allocations
       const updateData = {
         lotAllocations: JSON.stringify(allocations),
-        totalCost: totalCostFromLots,
-        totalSellingPrice: totalSellingPrice,
-        totalProfit: totalSellingPrice - totalCostFromLots - (order.packagingCost || 0),
+        totalCost: totalCostFromLots, // Update cost based on allocated lots
         lotsAllocatedBy: ctx.state.user?.username || ctx.state.user?.email || 'System',
         lotsAllocatedAt: new Date()
       };

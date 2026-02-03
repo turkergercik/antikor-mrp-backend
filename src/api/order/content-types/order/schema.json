@@ -36,6 +36,11 @@
       "type": "decimal",
       "default": 0
     },
+    "marginType": {
+      "type": "enumeration",
+      "enum": ["margin", "discount"],
+      "default": "margin"
+    },
     "packagingEnabled": {
       "type": "boolean",
       "default": false
@@ -51,11 +56,24 @@
       "type": "decimal",
       "default": 0
     },
+    "totalExitPrice": {
+      "type": "decimal",
+      "default": 0
+    },
     "totalSellingPrice": {
       "type": "decimal",
       "default": 0
     },
     "totalProfit": {
+      "type": "decimal",
+      "default": 0
+    },
+    "priceType": {
+      "type": "enumeration",
+      "enum": ["bayi", "son_kullanici", "yurtdisi"],
+      "default": "bayi"
+    },
+    "subcontractorCost": {
       "type": "decimal",
       "default": 0
     },
@@ -189,6 +207,10 @@
     },
     "fulfillmentNotes": {
       "type": "text"
+    },
+    "pendingBatchCreation": {
+      "type": "json",
+      "default": null
     }
   }
 }

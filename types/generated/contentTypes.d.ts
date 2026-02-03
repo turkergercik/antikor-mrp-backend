@@ -468,6 +468,7 @@ export interface ApiBatchBatch extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    exitPrice: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     expiryDate: Schema.Attribute.Date;
     ingredientsUsed: Schema.Attribute.Component<'recipe.ingredient', true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
@@ -540,6 +541,47 @@ export interface ApiCargoCompanyCargoCompany
       Schema.Attribute.Unique;
     publishedAt: Schema.Attribute.DateTime;
     trackingUrl: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiExtraCostExtraCost extends Struct.SingleTypeSchema {
+  collectionName: 'extra_cost';
+  info: {
+    description: 'Global extra cost for finished products';
+    displayName: 'Extra Cost';
+    pluralName: 'extra-costs';
+    singularName: 'extra-cost';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  pluginOptions: {
+    'content-manager': {
+      visible: true;
+    };
+    'content-type-builder': {
+      visible: true;
+    };
+  };
+  attributes: {
+    amount: Schema.Attribute.Decimal &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<0>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    description: Schema.Attribute.Text;
+    lastUpdated: Schema.Attribute.DateTime;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::extra-cost.extra-cost'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -711,6 +753,8 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
     lotsAllocatedAt: Schema.Attribute.DateTime;
     lotsAllocatedBy: Schema.Attribute.String;
     manualLotSelection: Schema.Attribute.JSON;
+    marginType: Schema.Attribute.Enumeration<['margin', 'discount']> &
+      Schema.Attribute.DefaultTo<'margin'>;
     notes: Schema.Attribute.Text;
     orderCreatedBy: Schema.Attribute.String;
     orderDate: Schema.Attribute.DateTime & Schema.Attribute.Required;
@@ -725,6 +769,11 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
     packagingEnabled: Schema.Attribute.Boolean &
       Schema.Attribute.DefaultTo<false>;
     partialShipments: Schema.Attribute.JSON & Schema.Attribute.DefaultTo<[]>;
+    pendingBatchCreation: Schema.Attribute.JSON;
+    priceType: Schema.Attribute.Enumeration<
+      ['bayi', 'son_kullanici', 'yurtdisi']
+    > &
+      Schema.Attribute.DefaultTo<'bayi'>;
     profitMargin: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     publishedAt: Schema.Attribute.DateTime;
     quantity: Schema.Attribute.Decimal & Schema.Attribute.Required;
@@ -743,7 +792,9 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
     shippedAt: Schema.Attribute.DateTime;
     shippedBy: Schema.Attribute.String;
     shippedQuantity: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    subcontractorCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     totalCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    totalExitPrice: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     totalProfit: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     totalSellingPrice: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     trackingNumber: Schema.Attribute.String;
@@ -900,12 +951,14 @@ export interface ApiRecipeRecipe extends Struct.CollectionTypeSchema {
       Schema.Attribute.DefaultTo<1>;
     batchUnit: Schema.Attribute.Enumeration<['liter', 'kg', 'piece']> &
       Schema.Attribute.DefaultTo<'liter'>;
+    bayiFiyati: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     code: Schema.Attribute.String & Schema.Attribute.Unique;
     costPerUnit: Schema.Attribute.Decimal;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     description: Schema.Attribute.Text;
+    expiryDuration: Schema.Attribute.String;
     ingredients: Schema.Attribute.Component<'recipe.ingredient', true> &
       Schema.Attribute.Required;
     instructions: Schema.Attribute.RichText;
@@ -916,6 +969,7 @@ export interface ApiRecipeRecipe extends Struct.CollectionTypeSchema {
       'api::recipe.recipe'
     > &
       Schema.Attribute.Private;
+    manufacturingCost: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     name: Schema.Attribute.String &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
@@ -926,12 +980,14 @@ export interface ApiRecipeRecipe extends Struct.CollectionTypeSchema {
       Schema.Attribute.DefaultTo<0>;
     profitMargin: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     publishedAt: Schema.Attribute.DateTime;
-    sellingPrice: Schema.Attribute.Decimal;
+    sonKullaniciFiyati: Schema.Attribute.Decimal &
+      Schema.Attribute.DefaultTo<0>;
     totalCost: Schema.Attribute.Decimal;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     version: Schema.Attribute.String & Schema.Attribute.DefaultTo<'1.0'>;
+    yurtdisiFiyati: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
   };
 }
 
@@ -1625,6 +1681,7 @@ declare module '@strapi/strapi' {
       'admin::user': AdminUser;
       'api::batch.batch': ApiBatchBatch;
       'api::cargo-company.cargo-company': ApiCargoCompanyCargoCompany;
+      'api::extra-cost.extra-cost': ApiExtraCostExtraCost;
       'api::inventory.inventory': ApiInventoryInventory;
       'api::lot.lot': ApiLotLot;
       'api::order.order': ApiOrderOrder;

@@ -110,6 +110,7 @@ module.exports = {
             data: {
               totalCost: data.totalCost,
               costPerUnit: data.costPerUnit,
+              manufacturingCost: data.costPerUnit, // Same as costPerUnit - calculated from materials
               sellingPrice: data.sellingPrice,
             },
           });
@@ -229,9 +230,10 @@ async function calculateAndSetRecipeCost(data) {
     // Set the calculated costs in the data (in USD)
     data.totalCost = parseFloat(totalCost.toFixed(2));
     data.costPerUnit = parseFloat(costPerUnit.toFixed(2));
+    data.manufacturingCost = parseFloat(costPerUnit.toFixed(2)); // Same as costPerUnit
     data.sellingPrice = parseFloat(sellingPrice.toFixed(2));
 
-    console.log(`Recipe cost calculated: totalCost=$${data.totalCost} (${batchSize} units), costPerUnit=$${data.costPerUnit}, sellingPrice=$${data.sellingPrice} (margin: ${profitMargin}%)`);
+    console.log(`Recipe cost calculated: totalCost=$${data.totalCost} (${batchSize} units), costPerUnit=$${data.costPerUnit}, manufacturingCost=$${data.manufacturingCost}, sellingPrice=$${data.sellingPrice} (margin: ${profitMargin}%)`);
   } catch (error) {
     console.error('Error in calculateAndSetRecipeCost:', error);
   }

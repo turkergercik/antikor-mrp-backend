@@ -35,7 +35,11 @@
     },
     "batchUnit": {
       "type": "enumeration",
-      "enum": ["liter", "kg", "piece"],
+      "enum": [
+        "liter",
+        "kg",
+        "piece"
+      ],
       "default": "liter"
     },
     "ingredients": {
@@ -68,12 +72,28 @@
     "costPerUnit": {
       "type": "decimal"
     },
-    "sellingPrice": {
-      "type": "decimal"
+    "manufacturingCost": {
+      "type": "decimal",
+      "default": 0
+    },
+    "bayiFiyati": {
+      "type": "decimal",
+      "default": 0
+    },
+    "sonKullaniciFiyati": {
+      "type": "decimal",
+      "default": 0
+    },
+    "yurtdisiFiyati": {
+      "type": "decimal",
+      "default": 0
     },
     "profitMargin": {
       "type": "decimal",
       "default": 0
+    },
+    "expiryDuration": {
+      "type": "string"
     },
     "createdBy": {
       "type": "relation",

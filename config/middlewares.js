@@ -6,14 +6,14 @@ module.exports = [
   'strapi::poweredBy',
   'strapi::query',
   'strapi::body',
-  'strapi::session',
-  'strapi::favicon',
-  'strapi::public',
   {
-    name: 'strapi::compression',
+    name: 'strapi::session',
     config: {
-      threshold: 1024, // Only compress responses > 1KB
-      level: 6, // Compression level (1-9, 6 is good balance)
+      key: 'strapi.sid',
+      rolling: false,
+      renew: false,
     },
   },
+  'strapi::favicon',
+  'strapi::public',
 ];

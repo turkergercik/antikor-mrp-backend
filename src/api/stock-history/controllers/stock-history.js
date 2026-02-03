@@ -70,15 +70,35 @@ module.exports = createCoreController('api::stock-history.stock-history', ({ str
     const { sku } = ctx.params;
 
     try {
-      const history = await strapi.entityService.findMany('api::stock-history.stock-history', {
-        filters: {
-          sku: sku
-        },
-        populate: {
-          rawMaterial: true
-        },
-        sort: { createdAt: 'desc' }
-      });
+      // Use raw SQL to completely bypass everything
+      const rawHistory = await strapi.db.connection.raw(
+        'SELECT * FROM stock_histories WHERE sku = ? ORDER BY created_at DESC',
+        [sku]
+      );
+      
+      // Extract rows from raw query result (format varies by database)
+      const rows = rawHistory.rows || rawHistory[0] || rawHistory;
+      
+      strapi.log.info(`[RAW SQL DEBUG] Total rows returned: ${rows.length}`);
+
+      // Map snake_case database columns to camelCase JavaScript properties
+      const history = rows.map(record => ({
+        id: record.id,
+        sku: record.sku,
+        lotNumber: record.lot_number,
+        quantity: record.quantity,
+        unit: record.unit,
+        transactionType: record.transaction_type,
+        pricePerUnit: record.price_per_unit,
+        totalCost: record.total_cost,
+        currency: record.currency,
+        purchaseDate: record.purchase_date,
+        currentBalance: record.current_balance,
+        referenceNumber: record.reference_number,
+        notes: record.notes,
+        createdAt: record.created_at,
+        updatedAt: record.updated_at
+      }));
 
       strapi.log.info(`[STOCK-HISTORY-GETBYSKU] ${sku} Total transactions: ${history.length}`);
       strapi.log.info(`[STOCK-HISTORY-GETBYSKU] ${sku} ALL TRANSACTIONS:`);
@@ -149,11 +169,12 @@ module.exports = createCoreController('api::stock-history.stock-history', ({ str
 
   async getSummaryBySKU(ctx) {
     try {
-      const allHistory = await strapi.entityService.findMany('api::stock-history.stock-history', {
+      // Use db.query to get all records without pagination
+      const allHistory = await strapi.db.query('api::stock-history.stock-history').findMany({
         populate: {
           rawMaterial: true
         },
-        sort: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' }
       });
 
       strapi.log.info(`[STOCK-SUMMARY] Total transactions across all SKUs: ${allHistory.length}`);
@@ -187,25 +208,15 @@ module.exports = createCoreController('api::stock-history.stock-history', ({ str
           };
         }
 
-        // Calculate totalStock (sum of all purchases/production for this lot)
+        // Use currentBalance from latest transaction (same as check-stock endpoint)
+        const lotCurrentBalance = parseFloat(latestTransaction.currentBalance || 0);
+        
+        // Calculate totalStock (sum of all purchases/production for this lot) for reference
         const totalStock = transactions
           .filter(t => ['purchase', 'production', 'return'].includes(t.transactionType))
           .reduce((sum, t) => sum + parseFloat(t.quantity || 0), 0);
         
-        // Calculate currentBalance for THIS LOT ONLY by processing all its transactions
-        const lotCurrentBalance = transactions.reduce((balance, t) => {
-          if (['purchase', 'production', 'return'].includes(t.transactionType)) {
-            return balance + parseFloat(t.quantity || 0);
-          } else if (['usage', 'sale', 'waste', 'imha'].includes(t.transactionType)) {
-            return balance - parseFloat(t.quantity || 0);
-          } else if (t.transactionType === 'adjustment') {
-            // Adjustment can be positive or negative
-            return balance - parseFloat(t.quantity || 0);
-          }
-          return balance;
-        }, 0);
-        
-        strapi.log.info(`[STOCK-SUMMARY] ${sku} Lot ${latestTransaction.lotNumber}: totalStock=${totalStock} lotCurrentBalance=${lotCurrentBalance} (calculated from ${transactions.length} transactions)`);
+        strapi.log.info(`[STOCK-SUMMARY] ${sku} Lot ${latestTransaction.lotNumber}: ✓ Using latest currentBalance=${lotCurrentBalance} from ${latestTransaction.transactionType}`);
         
         // Log detailed transactions for ready products (pieces)
         if (latestTransaction.unit === 'piece') {
